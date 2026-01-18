@@ -39,7 +39,7 @@ const inputs = {
 
 const buttons = {
     start: document.getElementById('start-btn'),
-    quickReply: document.getElementById('quick-reply-btn'),
+
     quickReplyMeeting: document.getElementById('quick-reply-meeting-btn'),
     endMeeting: document.getElementById('end-meeting-btn'),
     micToggle: document.getElementById('mic-toggle-btn'),
@@ -72,7 +72,7 @@ function init() {
 
     // Event Listeners
     buttons.start.addEventListener('click', startSession);
-    if (buttons.quickReply) buttons.quickReply.addEventListener('click', quickReply);
+
     if (buttons.quickReplyMeeting) buttons.quickReplyMeeting.addEventListener('click', quickReply);
 
     buttons.endMeeting.addEventListener('click', endSession);
@@ -452,7 +452,8 @@ function updateTranscriptUI(finalText, interimText) {
         scrollToBottom(displays.transcriptFeed);
     }
 
-    // 2. Handle Interim (Always update the specific node)
+    // 2. Handle Interim (DISABLED per user request: Only show final text)
+    /*
     let interimNode = document.getElementById('interim-node');
     if (!interimNode) {
         interimNode = document.createElement('p');
@@ -469,6 +470,7 @@ function updateTranscriptUI(finalText, interimText) {
     } else {
         scrollToBottom(displays.transcriptFeed);
     }
+    */
 }
 
 // --- Helpers & UI ---
