@@ -145,16 +145,28 @@ function setupSpeechRecognition() {
             return;
         }
         console.error("Speech Error:", event.error);
+
+        // Show capturing errors
+        if (event.error === 'network' || event.error === 'audio-capture' || event.error === 'not-allowed') {
+            showToast("⚠️ Speech Error: " + event.error);
+        }
+
         if (event.error === 'not-allowed') {
-            showToast("Microphone access denied.");
             state.isRecording = false;
             updateMicUI(false);
         }
     };
 }
 
-// Hack to force "High Sensitive" Audio Mode on Android
+// Hack to force "High Sensitive" Audio Mode
+// NOTE: Disabled on Mobile because it causes "Audio Focus" contention with Speech API
 async function setupAudioMode() {
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobile) {
+        console.log("Skipping 'Dummy Stream' hack on mobile to prevent conflict.");
+        return;
+    }
+
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
 
     try {
