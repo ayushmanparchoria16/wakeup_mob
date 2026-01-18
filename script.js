@@ -110,6 +110,10 @@ function setupSpeechRecognition() {
     };
 
     state.recognition.onend = () => {
+        // Android/Chrome often resets the internal buffer on restart.
+        // We must reset our offset tracking to match the new session.
+        transcriptOffset = 0;
+
         // Auto-restart if we shouldn't have stopped
         if (state.isRecording) {
             // Small delay to prevent rapid restart loops or "already started" errors
@@ -527,7 +531,9 @@ async function streamAIResponse(element) {
         4. IGNORE inputs that are just the user reading your previous response aloud.`
     };
 
-    const messages = [systemMessage, ...state.chatHistory];
+    // Keep context window manageable (System + Last 20 messages)
+    const recentHistory = state.chatHistory.slice(-20);
+    const messages = [systemMessage, ...recentHistory];
 
     try {
         const response = await fetch(CONFIG.API_URL, {
