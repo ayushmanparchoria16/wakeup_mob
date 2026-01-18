@@ -70,8 +70,9 @@ function init() {
         inputs.apiKey.value = storedKey;
     }
 
-    // Disclaimer
-    console.log("Note: Browser Speech API does not support Speaker Diarization (User 1 vs User 2).");
+    // Disclaimer & Tips
+    console.log("Note: Browser Speech API does not support Speaker Diarization.");
+    showToast("Tip: For Laptop Audio, increase volume & place Mic closer!", 5000);
 
     // Event Listeners
     buttons.start.addEventListener('click', startSession);
@@ -116,7 +117,6 @@ function setupSpeechRecognition() {
 
         // Auto-restart if we shouldn't have stopped
         if (state.isRecording) {
-            // Small delay to prevent rapid restart loops or "already started" errors
             setTimeout(() => {
                 if (state.isRecording) {
                     try {
@@ -148,6 +148,30 @@ function setupSpeechRecognition() {
     };
 }
 
+// Hack to force "High Sensitive" Audio Mode on Android
+async function setupAudioMode() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+
+    try {
+        // Request raw audio to disable system Noise Gate/Cancel
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false,
+            }
+        });
+
+        // We don't need the stream, just the mode switch.
+        stream.getTracks().forEach(track => track.stop());
+        console.log("Audio mode set to High Sensitivity");
+    } catch (e) {
+        console.warn("Could not set audio mode:", e);
+    }
+}
+
+// --- AI Integration (Grok / OpenAI Compatible) ---
+
 // --- Core Logic ---
 
 async function startSession() {
@@ -162,6 +186,9 @@ async function startSession() {
         showToast("Please enter a meeting topic.");
         return;
     }
+
+    // Try to force high sensitivity audio
+    await setupAudioMode();
 
     // Save key
     localStorage.setItem('wakeup_ai_api_key', key);
