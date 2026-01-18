@@ -167,6 +167,7 @@ async function startSession() {
     state.chatHistory = [];
     state.transcriptLog = [];
     state.aiLog = [];
+    transcriptOffset = 0; // Reset speech tracker
 
     // Clear feeds
     displays.transcriptFeed.innerHTML = '';
@@ -207,13 +208,16 @@ function toggleMic() {
     }
 }
 
-// --- Speech Handling ---
+let transcriptOffset = 0; // Track length of text we have already processed
 
 function handleSpeechResult(event) {
-    let interimTranscript = '';
     let finalTranscript = '';
+    let interimTranscript = '';
+    let newFinalText = '';
 
-    for (let i = event.resultIndex; i < event.results.length; ++i) {
+    // 1. Reconstruct the full transcript from the event results history
+    // (This handles Android's tendency to resend or repeat blocks)
+    for (let i = 0; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
             finalTranscript += event.results[i][0].transcript;
         } else {
@@ -221,16 +225,26 @@ function handleSpeechResult(event) {
         }
     }
 
-    updateTranscriptUI(finalTranscript, interimTranscript);
+    // 2. Extract ONLY the new part of the final text
+    if (finalTranscript.length > transcriptOffset) {
+        newFinalText = finalTranscript.substring(transcriptOffset);
+        transcriptOffset = finalTranscript.length;
+    }
 
-    if (interimTranscript.length > 0 || finalTranscript.length > 0) {
+    // 3. Update UI
+    // We only append the *new* final text to the UI to avoid duplicates
+    updateTranscriptUI(newFinalText, interimTranscript);
+
+    // 4. Visualize
+    if (interimTranscript.length > 0 || newFinalText.length > 0) {
         simulateVisualizer(true);
     } else {
         simulateVisualizer(false);
     }
 
-    if (finalTranscript) {
-        const cleanText = finalTranscript.trim();
+    // 5. Send to AI (Only if we have meaningful new text)
+    if (newFinalText) {
+        const cleanText = newFinalText.trim();
         if (cleanText.length > 0) {
             const timestamp = new Date().toLocaleTimeString();
             state.transcriptLog.push({ timestamp, text: cleanText });
