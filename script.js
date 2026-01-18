@@ -431,24 +431,21 @@ function flushAiBuffer() {
 }
 
 function updateTranscriptUI(finalText, interimText) {
-    // 1. Handle Final Text (Append to last final paragraph if exists)
-    if (finalText) {
-        let lastFinal = document.querySelector('.transcript-segment.final:last-of-type');
+    // 1. Handle Final Text (Create NEW paragraph for every final chunk)
+    // User Request: "new question in new line"
+    if (finalText && finalText.trim().length > 0) {
+        const newSegment = document.createElement('p');
+        newSegment.className = 'transcript-segment final';
+        newSegment.textContent = finalText.trim();
 
-        // Create new paragraph if none exists or length is getting too huge
-        if (!lastFinal || lastFinal.textContent.length > 500) {
-            lastFinal = document.createElement('p');
-            lastFinal.className = 'transcript-segment final';
-            // Insert before interim node if it exists, otherwise append
-            const interimNode = document.getElementById('interim-node');
-            if (interimNode) {
-                displays.transcriptFeed.insertBefore(lastFinal, interimNode);
-            } else {
-                displays.transcriptFeed.appendChild(lastFinal);
-            }
+        // Insert before interim (if exists, though disabled now) or append
+        const interimNode = document.getElementById('interim-node');
+        if (interimNode) {
+            displays.transcriptFeed.insertBefore(newSegment, interimNode);
+        } else {
+            displays.transcriptFeed.appendChild(newSegment);
         }
 
-        lastFinal.textContent += finalText;
         scrollToBottom(displays.transcriptFeed);
     }
 
