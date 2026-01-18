@@ -21,32 +21,36 @@
     <div class="ambient-glow glow-2"></div>
 
     <!-- App Container -->
-    <div id="app-container">
+    <!-- Puter.js -->
+    <script src="https://js.puter.com/v2/"></script>
 
-        <!-- Screen 1: Setup -->
-        <section id="setup-screen" class="screen active">
-            <div class="glass-card start-card">
+    <div class="app-container">
+        <!-- HEADER -->
+        <header>
+            <div class="logo-area">
+                <div class="logo-icon">
+                    <div class="pulse-ring"></div>
+                </div>
                 <h1>Wakeup AI</h1>
                 <p class="subtitle">Live Meeting Intelligence</p>
 
                 <div class="input-group">
-                    <label for="api-key-input">Groq API Key</label>
-                    <input type="password" id="api-key-input" placeholder="Paste your Groq API Key (gsk_...)"
-                        autocomplete="off">
-                    <p class="hint">Stored locally in your browser.</p>
+                    <label>Meeting Topic</label>
+                    <input type="text" id="topic-input" placeholder="e.g. Q3 Roadmap Review">
                 </div>
 
-                <div class="input-group">
-                    <label for="topic-input">Meeting Topic / Context</label>
-                    <input type="text" id="topic-input" placeholder="e.g., Q3 Marketing Strategy">
+                <div class="controls-start">
+                    <button id="start-btn" class="primary-btn">
+                        <span class="icon">▶</span> Start Session
+                    </button>
+                    <!-- Quick Reply Button -->
+                    <button id="quick-reply-btn" class="btn-icon" title="Quick Reply (Send Now)">
+                        <span class="icon">⚡</span>
+                    </button>
                 </div>
 
-                <button id="start-btn" class="primary-btn">
-                    <span class="material-icons-round">mic</span> Start Meeting
-                </button>
             </div>
-        </section>
-
+        </header>
         <!-- Screen 2: Meeting Interface -->
         <section id="meeting-screen" class="screen">
             <header class="app-header">
@@ -73,7 +77,11 @@
                 <!-- Transcript Feed (Now Right) -->
                 <div class="panel transcript-panel">
                     <div class="panel-header">
-                        <span class="material-icons-round">record_voice_over</span> Live Transcript
+                        <span class="material-icons-round">record_voice_over</span>
+                        <span style="flex: 1;">Live Transcript</span>
+                        <button id="quick-reply-meeting-btn" class="header-action-btn" title="Quick Reply">
+                            <span class="material-icons-round">bolt</span>
+                        </button>
                     </div>
                     <div id="transcript-feed" class="scroll-content">
                         <p class="placeholder-text">Waiting for speech...</p>
@@ -90,10 +98,18 @@
             </main>
 
             <footer class="controls">
+
+
+                <!-- Center Mic -->
                 <button id="mic-toggle-btn" class="fab">
                     <span class="material-icons-round">mic</span>
                 </button>
-                <div id="status-text">Listening...</div>
+
+                <!-- Spacer for balance -->
+                <div style="width: 48px;"></div>
+
+                <!-- Status Text (absolute or moved) -->
+                <div id="status-text" class="status-overlay">Listening...</div>
             </footer>
         </section>
 
@@ -128,7 +144,7 @@
     <!-- Toast Notification -->
     <div id="toast" class="hidden">Notification</div>
 
-    <script src="script.js?v=25"></script>
+    <script src="script.js?v=35"></script>
 </body>
 
 </html>

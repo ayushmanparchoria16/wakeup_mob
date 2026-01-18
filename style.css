@@ -181,28 +181,65 @@ input:focus {
 }
 
 .primary-btn {
-    width: 100%;
-    background: linear-gradient(135deg, var(--primary), #7c3aed);
+    width: auto;
+    min-width: 180px;
+    background: linear-gradient(135deg, var(--primary) 0%, #7c3aed 100%);
     color: white;
     border: none;
-    padding: 14px;
-    border-radius: var(--radius-md);
+    padding: 14px 28px;
+    border-radius: 50px;
     font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 8px;
-    transition: transform 0.2s, filter 0.2s;
+    gap: 10px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 15px var(--primary-glow);
+    position: relative;
+}
+
+.primary-btn:hover {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 8px 25px var(--primary-glow);
+    filter: brightness(1.1);
 }
 
 .primary-btn:active {
     transform: scale(0.98);
 }
 
-.primary-btn:hover {
-    filter: brightness(1.1);
+.controls-start {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.btn-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.2rem;
+    transition: all 0.2s;
+}
+
+.btn-icon:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--primary);
+    color: var(--primary);
+    transform: translateY(-1px);
+}
+
+.btn-icon:active {
+    transform: scale(0.95);
 }
 
 /* Meeting Screen */
@@ -351,6 +388,30 @@ input:focus {
     font-weight: 600;
 }
 
+.header-action-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--accent);
+    border: none;
+    border-radius: 6px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.header-action-btn:hover {
+    background: var(--accent);
+    color: white;
+    transform: scale(1.1);
+}
+
+.header-action-btn .material-icons-round {
+    font-size: 18px;
+}
+
 .scroll-content {
     flex: 1;
     overflow-y: auto;
@@ -466,13 +527,56 @@ input:focus {
 .controls {
     height: 90px;
     display: flex;
-    flex-direction: column;
+    height: 90px;
+    display: flex;
+    flex-direction: row;
+    /* Changed to row */
     justify-content: center;
     align-items: center;
+    gap: 20px;
     background: rgba(9, 9, 11, 0.9);
     border-top: var(--glass-border);
     flex-shrink: 0;
     padding-bottom: env(safe-area-inset-bottom);
+    position: relative;
+    /* For status-overlay */
+}
+
+.fab-mini {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-main);
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: all 0.2s;
+}
+
+.fab-mini:hover {
+    background: var(--primary);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 0 15px var(--primary-glow);
+}
+
+.fab-mini .material-icons-round {
+    font-size: 24px;
+}
+
+.status-overlay {
+    position: absolute;
+    bottom: 8px;
+    /* Position text below buttons */
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.7rem !important;
+    opacity: 0.7;
+    pointer-events: none;
 }
 
 .fab {

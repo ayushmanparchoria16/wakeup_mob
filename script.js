@@ -1,43 +1,46 @@
 /**
  * Wakeup AI - Logic Script
- * Handles Speech Recognition, Gemini API Streaming, and UI State
+ * Handles Speech Recognition, Puter.js AI Streaming, and UI State
  */
 
 // --- Configuration & State ---
 const CONFIG = {
-    MODEL_NAME: 'llama-3.3-70b-versatile', // Updated to latest Llama 3.3
-    API_URL: 'https://api.groq.com/openai/v1/chat/completions',
-    DEFAULT_KEY: '' // Cleared for GitHub security (User must enter key)
+    // No API Keys needed! Puter.js handles auth.
 };
 
 const state = {
-    apiKey: '',
     topic: '',
     isRecording: false,
     transcriptLog: [],
     aiLog: [],
-    chatHistory: [], // Now stores { role: "user"|"assistant", content: "..." }
+    chatHistory: [],
     recognition: null,
+    dummyStream: null,
     silenceTimer: null,
     isProcessingAI: false,
     pendingBuffer: "",
-    lastAiCallTime: 0
+    lastAiCallTime: 0,
+    // Speech & Trigger State
+    transcriptOffset: 0,
+    aiTriggerBuffer: "",
+    aiTriggerTimer: null
 };
 
 // --- DOM Elements ---
 const screens = {
-    setup: document.getElementById('setup-screen'),
+    // 'setup' is the default underlying layer now
     meeting: document.getElementById('meeting-screen'),
     end: document.getElementById('end-screen')
 };
 
 const inputs = {
-    apiKey: document.getElementById('api-key-input'),
     topic: document.getElementById('topic-input')
 };
 
 const buttons = {
     start: document.getElementById('start-btn'),
+    quickReply: document.getElementById('quick-reply-btn'),
+    quickReplyMeeting: document.getElementById('quick-reply-meeting-btn'),
     endMeeting: document.getElementById('end-meeting-btn'),
     micToggle: document.getElementById('mic-toggle-btn'),
     download: document.getElementById('download-btn'),
@@ -61,13 +64,6 @@ function init() {
     // Check protocol
     if (window.location.protocol === 'file:') {
         showToast("⚠️ Run via Local Server to save permissions!");
-        console.warn("Running from file:// system. Browser may ask for mic permission repeatedly.");
-    }
-
-    // Load API Key from local storage or use default
-    const storedKey = localStorage.getItem('wakeup_ai_api_key') || CONFIG.DEFAULT_KEY;
-    if (storedKey) {
-        inputs.apiKey.value = storedKey;
     }
 
     // Disclaimer & Tips
@@ -76,6 +72,9 @@ function init() {
 
     // Event Listeners
     buttons.start.addEventListener('click', startSession);
+    if (buttons.quickReply) buttons.quickReply.addEventListener('click', quickReply);
+    if (buttons.quickReplyMeeting) buttons.quickReplyMeeting.addEventListener('click', quickReply);
+
     buttons.endMeeting.addEventListener('click', endSession);
     buttons.micToggle.addEventListener('click', toggleMic);
     buttons.download.addEventListener('click', downloadTranscript);
@@ -84,10 +83,16 @@ function init() {
     // Spacebar to toggle mic
     document.addEventListener('keydown', (e) => {
         if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
-            e.preventDefault(); // Prevent scrolling
+            e.preventDefault();
             toggleMic();
         }
     });
+
+    // Device Check & Advice
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobile) {
+        showToast("📱 Mobile Text: For capturing Laptop Audio, it is better to open this app on your Laptop Browser!", 8000);
+    }
 
     // Setup Speech Recognition
     setupSpeechRecognition();
@@ -113,7 +118,7 @@ function setupSpeechRecognition() {
     state.recognition.onend = () => {
         // Android/Chrome often resets the internal buffer on restart.
         // We must reset our offset tracking to match the new session.
-        transcriptOffset = 0;
+        state.transcriptOffset = 0;
 
         // Auto-restart if we shouldn't have stopped
         if (state.isRecording) {
@@ -153,8 +158,13 @@ async function setupAudioMode() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
 
     try {
+        if (state.dummyStream) {
+            state.dummyStream.getTracks().forEach(t => t.stop());
+        }
+
         // Request raw audio to disable system Noise Gate/Cancel
-        const stream = await navigator.mediaDevices.getUserMedia({
+        // KEEP THIS STREAM OPEN to force the OS audio session into "Raw" mode
+        state.dummyStream = await navigator.mediaDevices.getUserMedia({
             audio: {
                 echoCancellation: false,
                 noiseSuppression: false,
@@ -162,45 +172,38 @@ async function setupAudioMode() {
             }
         });
 
-        // We don't need the stream, just the mode switch.
-        stream.getTracks().forEach(track => track.stop());
-        console.log("Audio mode set to High Sensitivity");
+        console.log("Audio mode set to High Sensitivity (Stream Open)");
     } catch (e) {
         console.warn("Could not set audio mode:", e);
     }
 }
 
-// --- AI Integration (Grok / OpenAI Compatible) ---
-
-// --- Core Logic ---
+// --- Puter.js AI Integration ---
 
 async function startSession() {
-    const key = inputs.apiKey.value.trim() || CONFIG.DEFAULT_KEY;
     const topic = inputs.topic.value.trim();
 
-    if (!key) {
-        showToast("Please enter a Grok API Key.");
-        return;
-    }
     if (!topic) {
         showToast("Please enter a meeting topic.");
         return;
     }
 
+    // Puter Auth Check
+    if (!puter.auth.isSignedIn()) {
+        showToast("Signing in to Puter...", 2000);
+        await puter.auth.signIn();
+    }
+
     // Try to force high sensitivity audio
     await setupAudioMode();
 
-    // Save key
-    localStorage.setItem('wakeup_ai_api_key', key);
-
-    state.apiKey = key;
     state.topic = topic;
     state.chatHistory = [];
     state.transcriptLog = [];
     state.aiLog = [];
-    transcriptOffset = 0;
-    aiTriggerBuffer = "";
-    clearTimeout(aiTriggerTimer);
+    state.transcriptOffset = 0;
+    state.aiTriggerBuffer = "";
+    clearTimeout(state.aiTriggerTimer);
 
     // Clear feeds
     displays.transcriptFeed.innerHTML = '';
@@ -218,9 +221,123 @@ async function startSession() {
     }
 }
 
+async function streamAIResponse(element) {
+    const systemMessage = {
+        role: "system",
+        content: `You are an AI assistant in a meeting. The topic is: "${state.topic}".
+        RULES:
+        1. Format response using bullet points (- point).
+        2. Technical/Code commands MUST be in triple backticks (e.g. \`\`\`npm install\`\`\`) on a new line.
+        3. Be concise (1-2 sentences per point).
+        4. IGNORE inputs that are just the user reading your previous response aloud.`
+    };
+
+    // Keep context window manageable (System + Last 20 messages)
+    const recentHistory = state.chatHistory.slice(-20);
+    const messages = [systemMessage, ...recentHistory];
+
+    try {
+        console.time("AI_Latency");
+        // Use Puter.js Chat Streaming - Request GPT-4o-mini for speed
+        const response = await puter.ai.chat(messages, {
+            stream: true,
+            model: 'gpt-4o-mini'
+        });
+
+        element.innerHTML = ""; // Clear loading dots
+        let finalOutput = "";
+        let firstToken = true;
+
+        for await (const part of response) {
+            if (firstToken) {
+                console.timeEnd("AI_Latency");
+                firstToken = false;
+            }
+            const text = part?.text || "";
+            if (text) {
+                finalOutput += text;
+                element.innerHTML = parseMarkdown(finalOutput);
+                scrollToBottom(displays.aiFeed);
+            }
+        }
+
+        return finalOutput;
+
+    } catch (error) {
+        console.error(error);
+        element.textContent = `Error: ${error.message}`;
+        return null;
+    }
+}
+
+// --- Quick Reply Logic ---
+
+async function quickReply() {
+    // 1. Check pending buffer first
+    let text = state.aiTriggerBuffer.trim();
+
+    // 2. If empty, check recent transcript (Context)
+    if (!text && state.transcriptLog.length > 0) {
+        // Take last 3 entries to get enough context
+        const last = state.transcriptLog.slice(-3).map(i => i.text).join(" ");
+        text = last.trim();
+    }
+
+    if (!text) {
+        showToast("No text to reply to!");
+        return;
+    }
+
+    // Force send
+    showToast("⚡ Sending Quick Reply...");
+    state.aiTriggerBuffer = ""; // Clear buffer so it doesn't send again automatically
+    clearTimeout(state.aiTriggerTimer); // Stop auto-timer
+
+    await triggerAI(text, "QUICK");
+}
+
+async function triggerAI(text, type = "SPEECH") {
+    if (state.isProcessingAI) return;
+
+    let instruction = text;
+    if (type === "QUICK") {
+        instruction = `[System: User clicked 'Quick Reply'. Answer this immediately and briefly (1-2 sentences).]\n\n${text}`;
+    }
+
+    state.isProcessingAI = true;
+
+    // UI: "Analyzing..." or "..."
+    const aiMessageId = `ai-msg-${Date.now()}`;
+    const aiContainer = document.createElement('div');
+    aiContainer.className = 'ai-message';
+    aiContainer.id = aiMessageId;
+    // Visual cue for quick reply
+    aiContainer.innerHTML = (type === "QUICK") ? "<em>⚡ Quick Reply...</em>" : "<em>Thinking...</em>";
+    displays.aiFeed.appendChild(aiContainer);
+    scrollToBottom(displays.aiFeed);
+
+    state.chatHistory.push({ role: "user", content: instruction });
+
+    try {
+        const fullResponseText = await streamAIResponse(aiContainer);
+        if (fullResponseText) {
+            state.chatHistory.push({ role: "assistant", content: fullResponseText });
+            state.aiLog.push({ timestamp: new Date().toLocaleTimeString(), text: fullResponseText });
+        }
+    } finally {
+        state.isProcessingAI = false;
+    }
+}
+
+
 function endSession() {
     state.isRecording = false;
     state.recognition.stop();
+
+    if (state.dummyStream) {
+        state.dummyStream.getTracks().forEach(t => t.stop());
+        state.dummyStream = null;
+    }
 
     // Calculate Stats
     const totalWords = state.transcriptLog.reduce((acc, log) => acc + log.text.split(' ').length, 0);
@@ -241,9 +358,7 @@ function toggleMic() {
     }
 }
 
-let transcriptOffset = 0;
-let aiTriggerBuffer = "";
-let aiTriggerTimer = null;
+// (Globals removed, moved to state)
 
 function handleSpeechResult(event) {
     let finalTranscript = '';
@@ -258,9 +373,9 @@ function handleSpeechResult(event) {
         }
     }
 
-    if (finalTranscript.length > transcriptOffset) {
-        newFinalText = finalTranscript.substring(transcriptOffset);
-        transcriptOffset = finalTranscript.length;
+    if (finalTranscript.length > state.transcriptOffset) {
+        newFinalText = finalTranscript.substring(state.transcriptOffset);
+        state.transcriptOffset = finalTranscript.length;
     }
 
     // UI: Append inline to avoid fragmentation
@@ -277,7 +392,7 @@ function handleSpeechResult(event) {
     if (newFinalText) {
         const cleanChunk = newFinalText; // Keep spaces
         if (cleanChunk.trim().length > 0) {
-            aiTriggerBuffer += cleanChunk;
+            state.aiTriggerBuffer += cleanChunk;
 
             // Log for transcript record
             const timestamp = new Date().toLocaleTimeString();
@@ -288,18 +403,18 @@ function handleSpeechResult(event) {
                 flushAiBuffer();
             } else {
                 // Debounce: Wait 1s silence, then send
-                clearTimeout(aiTriggerTimer);
-                aiTriggerTimer = setTimeout(flushAiBuffer, 1500);
+                clearTimeout(state.aiTriggerTimer);
+                state.aiTriggerTimer = setTimeout(flushAiBuffer, 1500);
             }
         }
     }
 }
 
 function flushAiBuffer() {
-    clearTimeout(aiTriggerTimer);
-    if (aiTriggerBuffer.trim().length > 2) {
-        triggerAI(aiTriggerBuffer.trim());
-        aiTriggerBuffer = "";
+    clearTimeout(state.aiTriggerTimer);
+    if (state.aiTriggerBuffer.trim().length > 2) {
+        triggerAI(state.aiTriggerBuffer.trim());
+        state.aiTriggerBuffer = "";
     }
 }
 
@@ -348,6 +463,7 @@ function updateTranscriptUI(finalText, interimText) {
 
 function switchScreen(screenName) {
     Object.values(screens).forEach(el => {
+        if (!el) return;
         el.classList.remove('active');
         setTimeout(() => {
             if (!el.classList.contains('active')) el.style.display = 'none';
@@ -355,10 +471,13 @@ function switchScreen(screenName) {
     });
 
     const target = screens[screenName];
-    target.style.display = 'flex';
-    setTimeout(() => {
-        target.classList.add('active');
-    }, 50);
+    if (target) {
+        target.style.display = 'flex';
+        // Small delay to allow display flex to apply before opacity transition
+        setTimeout(() => {
+            target.classList.add('active');
+        }, 50);
+    }
 }
 
 function updateMicUI(isActive) {
@@ -475,304 +594,7 @@ function clearAndExit() {
     location.reload();
 }
 
-// --- AI Integration (Grok / OpenAI Compatible) ---
 
-async function triggerAI(userText) {
-    if (!state.pendingBuffer) state.pendingBuffer = "";
-
-    if (userText.length < 2) return;
-
-    state.pendingBuffer += (state.pendingBuffer.length > 0 ? " " : "") + userText;
-
-    if (state.isProcessingAI) {
-        console.log("AI Busy: Buffering ->", state.pendingBuffer);
-        return;
-    }
-
-    state.isProcessingAI = true;
-
-    try {
-        while (state.pendingBuffer.length > 0) {
-            const textToProcess = state.pendingBuffer;
-            state.pendingBuffer = "";
-
-            if (textToProcess.length < 5) {
-                await new Promise(r => setTimeout(r, 1000));
-                continue;
-            }
-
-            // Rate Limit Check
-            const now = Date.now();
-            const MIN_INTERVAL = 3000; // Grok is usually faster/less strict, but keeping safety
-            const timeSinceLast = now - state.lastAiCallTime;
-            if (timeSinceLast < MIN_INTERVAL) {
-                await new Promise(r => setTimeout(r, MIN_INTERVAL - timeSinceLast));
-            }
-            state.lastAiCallTime = Date.now();
-
-            console.log("Processing (Grok):", textToProcess);
-
-            // Update History (OpenAI Format)
-            state.chatHistory.push({
-                role: "user",
-                content: textToProcess
-            });
-
-            // UI Setup
-            const aiMessageId = `ai-msg-${Date.now()}`;
-            const aiContainer = document.createElement('div');
-            aiContainer.className = 'ai-message';
-            aiContainer.id = aiMessageId;
-            aiContainer.textContent = "...";
-            displays.aiFeed.appendChild(aiContainer);
-            scrollToBottom(displays.aiFeed);
-
-            const fullResponseText = await streamAIResponse(aiContainer);
-
-            if (fullResponseText) {
-                // OpenAI uses 'assistant', Gemini used 'model'
-                state.chatHistory.push({
-                    role: "assistant",
-                    content: fullResponseText
-                });
-                state.aiLog.push({ timestamp: new Date().toLocaleTimeString(), text: fullResponseText });
-            }
-
-            await new Promise(r => setTimeout(r, 1000));
-        }
-    } catch (e) {
-        console.error("AI Loop Error:", e);
-    } finally {
-        state.isProcessingAI = false;
-    }
-}
-
-async function streamAIResponse(element) {
-    const systemMessage = {
-        role: "system",
-        content: `You are an AI assistant in a meeting. The topic is: "${state.topic}".
-        RULES:
-        1. Format response using bullet points (- point).
-        2. Technical/Code commands MUST be in triple backticks (e.g. \`\`\`npm install\`\`\`) on a new line.
-        3. Be concise (1-2 sentences per point).
-        4. IGNORE inputs that are just the user reading your previous response aloud.`
-    };
-
-    // Keep context window manageable (System + Last 20 messages)
-    const recentHistory = state.chatHistory.slice(-20);
-    const messages = [systemMessage, ...recentHistory];
-
-    try {
-        const response = await fetch(CONFIG.API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${state.apiKey}`
-            },
-            body: JSON.stringify({
-                model: CONFIG.MODEL_NAME,
-                messages: messages,
-                stream: true,
-                temperature: 0.7
-            })
-        });
-
-        if (!response.ok) {
-            const err = await response.text();
-            throw new Error(`API Error ${response.status}: ${err}`);
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder("utf-8");
-        let buffer = "";
-        let finalOutput = "";
-
-        element.innerHTML = ""; // Clear loading dots
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop(); // Keep incomplete line
-
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed || trimmed === 'data: [DONE]') continue;
-
-                if (trimmed.startsWith('data: ')) {
-                    try {
-                        const json = JSON.parse(trimmed.substring(6));
-                        const content = json.choices[0]?.delta?.content || "";
-                        if (content) {
-                            finalOutput += content;
-                            element.innerHTML = parseMarkdown(finalOutput);
-                            scrollToBottom(displays.aiFeed);
-                        }
-                    } catch (e) {
-                        console.warn("Parse error", e);
-                    }
-                }
-            }
-        }
-        return finalOutput;
-
-    } catch (error) {
-        console.error(error);
-        element.textContent = `Error: ${error.message}`;
-        return null; // Return null to signal failure
-    }
-}
-
-function parseMarkdown(text) {
-    if (!text) return "";
-
-    // Escape HTML first to prevent XSS (basic)
-    let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-    // 1. Code Blocks / Commands (```command``` or `command`)
-    // We strictly look for code blocks or commands.
-    html = html.replace(/```([\s\S]*?)```/g, '<div class="code-box">$1</div>');
-    html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-
-    // 2. Bold (**text**)
-    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-    // 3. Lists (- item)
-    // We split by newline, check for lines starting with "- ", and wrap them.
-    // This is a simple parser.
-    const lines = html.split('\n');
-    let inList = false;
-    let newHtml = "";
-
-    lines.forEach(line => {
-        if (line.trim().startsWith('- ')) {
-            if (!inList) {
-                newHtml += "<ul>";
-                inList = true;
-            }
-            newHtml += `<li>${line.trim().substring(2)}</li>`;
-        } else {
-            if (inList) {
-                newHtml += "</ul>";
-                inList = false;
-            }
-            newHtml += line + "<br>";
-        }
-    });
-    if (inList) newHtml += "</ul>";
-
-    return newHtml;
-}
-
-// Note: The above JSON parsing is brittle for a stream. 
-// A better way for browser fetch stream of JSON:
-// The Gemini API returns a format like `[{...}, \r\n {...}]`.
-// For the sake of this demo, we will use a more robust recursive parser or just wait for the full response if streaming is too hard without a library.
-// BUT, the prompt asks for Streaming.
-// Let's improve the streaming parser.
-// We can use a simpler approach: accumulate the buffer, try to parse JSON. If it fails, wait for more data.
-// However, the `streamGenerateContent` returns a list of objects. `[{...}, \n {...}]`. 
-// Actually, it usually sends `data: {json}` events if using SSE, but standard REST returns a singular JSON list that grows? 
-// No, standard REST standard is an array of objects. `[`, `{...}`, `,`, `{...}`, `]`
-// Let's stick to the Regex for "text" parts, as it's surprisingly effective for extracting content from complex JSON streams without full parsing logic.
-
-// --- Helper Functions ---
-
-function switchScreen(screenName) {
-    Object.values(screens).forEach(el => {
-        el.classList.remove('active');
-        setTimeout(() => {
-            if (!el.classList.contains('active')) el.style.display = 'none';
-        }, 400); // Wait for fade out
-    });
-
-    const target = screens[screenName];
-    target.style.display = 'flex';
-    // Small delay to allow display flex to apply before opacity transition
-    setTimeout(() => {
-        target.classList.add('active');
-    }, 50);
-}
-
-function updateMicUI(isActive) {
-    const btn = buttons.micToggle;
-    if (isActive) {
-        btn.classList.add('active');
-        displays.status.textContent = "Listening...";
-        simulateVisualizer(true);
-    } else {
-        btn.classList.remove('active');
-        displays.status.textContent = "Paused";
-        simulateVisualizer(false);
-    }
-}
-
-function scrollToBottom(element) {
-    element.scrollTo({
-        top: element.scrollHeight,
-        behavior: 'smooth'
-    });
-}
-
-function showToast(msg) {
-    const t = displays.toast;
-    t.textContent = msg;
-    t.classList.add('show');
-    t.classList.remove('hidden');
-    setTimeout(() => {
-        t.classList.remove('show');
-        setTimeout(() => t.classList.add('hidden'), 300);
-    }, 3000);
-}
-
-function simulateVisualizer(active) {
-    displays.visualizerBars.forEach(bar => {
-        if (active) {
-            bar.style.animationDuration = `${Math.random() * 0.5 + 0.2}s`;
-            bar.style.transform = `scaleY(${Math.random() * 0.8 + 0.2})`;
-        } else {
-            bar.style.transform = 'scaleY(0.1)';
-        }
-    });
-
-    if (active && state.isRecording) {
-        requestAnimationFrame(() => simulateVisualizer(true));
-    }
-}
-
-// --- Data Management ---
-
-function downloadTranscript() {
-    const lines = [];
-    lines.push(`MEETING: ${state.topic}`);
-    lines.push(`DATE: ${new Date().toLocaleString()}`);
-    lines.push('--- TRANSCRIPT ---');
-    state.transcriptLog.forEach(item => {
-        lines.push(`[${item.timestamp}] User: ${item.text}`);
-    });
-    lines.push('\n--- AI INSIGHTS ---');
-    state.aiLog.forEach(item => {
-        lines.push(`[${item.timestamp}] AI: ${item.text}`);
-    });
-
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Meeting_Transcript_${Date.now()}.txt`;
-    a.click();
-
-    URL.revokeObjectURL(url);
-    showToast("Transcript downloaded.");
-}
-
-function clearAndExit() {
-    sessionStorage.clear();
-    location.reload();
-}
 
 // Run
 window.addEventListener('load', init);
