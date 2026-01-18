@@ -167,7 +167,9 @@ async function startSession() {
     state.chatHistory = [];
     state.transcriptLog = [];
     state.aiLog = [];
-    transcriptOffset = 0; // Reset speech tracker
+    transcriptOffset = 0;
+    aiTriggerBuffer = "";
+    clearTimeout(aiTriggerTimer);
 
     // Clear feeds
     displays.transcriptFeed.innerHTML = '';
@@ -208,15 +210,15 @@ function toggleMic() {
     }
 }
 
-let transcriptOffset = 0; // Track length of text we have already processed
+let transcriptOffset = 0;
+let aiTriggerBuffer = "";
+let aiTriggerTimer = null;
 
 function handleSpeechResult(event) {
     let finalTranscript = '';
     let interimTranscript = '';
     let newFinalText = '';
 
-    // 1. Reconstruct the full transcript from the event results history
-    // (This handles Android's tendency to resend or repeat blocks)
     for (let i = 0; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
             finalTranscript += event.results[i][0].transcript;
@@ -225,43 +227,74 @@ function handleSpeechResult(event) {
         }
     }
 
-    // 2. Extract ONLY the new part of the final text
     if (finalTranscript.length > transcriptOffset) {
         newFinalText = finalTranscript.substring(transcriptOffset);
         transcriptOffset = finalTranscript.length;
     }
 
-    // 3. Update UI
-    // We only append the *new* final text to the UI to avoid duplicates
+    // UI: Append inline to avoid fragmentation
     updateTranscriptUI(newFinalText, interimTranscript);
 
-    // 4. Visualize
+    // Visualize
     if (interimTranscript.length > 0 || newFinalText.length > 0) {
         simulateVisualizer(true);
     } else {
         simulateVisualizer(false);
     }
 
-    // 5. Send to AI (Only if we have meaningful new text)
+    // Smart AI Triggering
     if (newFinalText) {
-        const cleanText = newFinalText.trim();
-        if (cleanText.length > 0) {
+        const cleanChunk = newFinalText; // Keep spaces
+        if (cleanChunk.trim().length > 0) {
+            aiTriggerBuffer += cleanChunk;
+
+            // Log for transcript record
             const timestamp = new Date().toLocaleTimeString();
-            state.transcriptLog.push({ timestamp, text: cleanText });
-            triggerAI(cleanText);
+            state.transcriptLog.push({ timestamp, text: cleanChunk.trim() });
+
+            // Check for sentence completion
+            if (/[.?!]$/.test(cleanChunk.trim())) {
+                flushAiBuffer();
+            } else {
+                // Debounce: Wait 1s silence, then send
+                clearTimeout(aiTriggerTimer);
+                aiTriggerTimer = setTimeout(flushAiBuffer, 1500);
+            }
         }
     }
 }
 
+function flushAiBuffer() {
+    clearTimeout(aiTriggerTimer);
+    if (aiTriggerBuffer.trim().length > 2) {
+        triggerAI(aiTriggerBuffer.trim());
+        aiTriggerBuffer = "";
+    }
+}
+
 function updateTranscriptUI(finalText, interimText) {
+    // 1. Handle Final Text (Append to last final paragraph if exists)
     if (finalText) {
-        const p = document.createElement('p');
-        p.className = 'transcript-segment final';
-        p.textContent = finalText;
-        displays.transcriptFeed.appendChild(p);
+        let lastFinal = document.querySelector('.transcript-segment.final:last-of-type');
+
+        // Create new paragraph if none exists or length is getting too huge
+        if (!lastFinal || lastFinal.textContent.length > 500) {
+            lastFinal = document.createElement('p');
+            lastFinal.className = 'transcript-segment final';
+            // Insert before interim node if it exists, otherwise append
+            const interimNode = document.getElementById('interim-node');
+            if (interimNode) {
+                displays.transcriptFeed.insertBefore(lastFinal, interimNode);
+            } else {
+                displays.transcriptFeed.appendChild(lastFinal);
+            }
+        }
+
+        lastFinal.textContent += finalText;
         scrollToBottom(displays.transcriptFeed);
     }
 
+    // 2. Handle Interim (Always update the specific node)
     let interimNode = document.getElementById('interim-node');
     if (!interimNode) {
         interimNode = document.createElement('p');
@@ -273,7 +306,8 @@ function updateTranscriptUI(finalText, interimText) {
     interimNode.textContent = interimText;
 
     if (!interimText) {
-        interimNode.remove();
+        // Don't remove node to keep layout stable, just clear text
+        interimNode.textContent = "";
     } else {
         scrollToBottom(displays.transcriptFeed);
     }
