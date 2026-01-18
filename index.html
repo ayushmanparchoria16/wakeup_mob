@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wakeup AI - Intelligent Meeting Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Material Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+</head>
+
+<body>
+
+    <!-- Background Effects -->
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
+
+    <!-- App Container -->
+    <div id="app-container">
+
+        <!-- Screen 1: Setup -->
+        <section id="setup-screen" class="screen active">
+            <div class="glass-card start-card">
+                <h1>Wakeup AI</h1>
+                <p class="subtitle">Live Meeting Intelligence</p>
+
+                <div class="input-group">
+                    <label for="api-key-input">Groq API Key</label>
+                    <input type="password" id="api-key-input" placeholder="Paste your Groq API Key (gsk_...)"
+                        autocomplete="off">
+                    <p class="hint">Stored locally in your browser.</p>
+                </div>
+
+                <div class="input-group">
+                    <label for="topic-input">Meeting Topic / Context</label>
+                    <input type="text" id="topic-input" placeholder="e.g., Q3 Marketing Strategy">
+                </div>
+
+                <button id="start-btn" class="primary-btn">
+                    <span class="material-icons-round">mic</span> Start Meeting
+                </button>
+            </div>
+        </section>
+
+        <!-- Screen 2: Meeting Interface -->
+        <section id="meeting-screen" class="screen">
+            <header class="app-header">
+                <div class="header-info">
+                    <div class="live-indicator">
+                        <span class="blob"></span> LIVE
+                    </div>
+                    <h2 id="display-topic">Meeting Topic</h2>
+                </div>
+                <button id="end-meeting-btn" class="danger-btn-sm">End</button>
+            </header>
+
+            <main class="split-view">
+                <!-- AI Suggestions Panel (Now Left) -->
+                <div class="panel ai-panel">
+                    <div class="panel-header">
+                        <span class="material-icons-round">auto_awesome</span> AI Insights
+                    </div>
+                    <div id="ai-feed" class="scroll-content">
+                        <div class="ai-welcome">AI is listening...</div>
+                    </div>
+                </div>
+
+                <!-- Transcript Feed (Now Right) -->
+                <div class="panel transcript-panel">
+                    <div class="panel-header">
+                        <span class="material-icons-round">record_voice_over</span> Live Transcript
+                    </div>
+                    <div id="transcript-feed" class="scroll-content">
+                        <p class="placeholder-text">Waiting for speech...</p>
+                    </div>
+                    <!-- Mic Status / Visualization -->
+                    <div class="audio-visualizer">
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                    </div>
+                </div>
+            </main>
+
+            <footer class="controls">
+                <button id="mic-toggle-btn" class="fab">
+                    <span class="material-icons-round">mic</span>
+                </button>
+                <div id="status-text">Listening...</div>
+            </footer>
+        </section>
+
+        <!-- Screen 3: Summary / End -->
+        <section id="end-screen" class="screen">
+            <div class="glass-card end-card">
+                <h2>Meeting Ended</h2>
+                <div class="stats">
+                    <div class="stat-item">
+                        <span class="label">Transcript Length</span>
+                        <span id="stat-words" class="value">0 words</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="label">AI Insights</span>
+                        <span id="stat-insights" class="value">0 generated</span>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button id="download-btn" class="secondary-btn">
+                        <span class="material-icons-round">download</span> Download Transcript
+                    </button>
+                    <button id="clear-exit-btn" class="primary-btn">
+                        <span class="material-icons-round">restart_alt</span> Clear & Exit
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="hidden">Notification</div>
+
+    <script src="script.js?v=20"></script>
+</body>
+
+</html>
