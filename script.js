@@ -45,7 +45,7 @@ const inputs = {
 const buttons = {
     start: document.getElementById('start-btn'),
     quickReplyMeeting: document.getElementById('quick-reply-meeting-btn'),
-    endMeeting: document.getElementById('end-meeting-btn'),
+    endMeeting: document.getElementById('end-session-btn'),
     micToggle: document.getElementById('mic-toggle-btn'),
     download: document.getElementById('download-btn'),
     clearExit: document.getElementById('clear-exit-btn')
@@ -455,6 +455,7 @@ async function streamAIResponse(element) {
         CRITICAL: LOOP DETECTION
         - If the INPUT text is simply a reading (or paraphrasing) of your LAST output, DO NOT generate a new answer.
         - Output exactly: [IGNORE]
+        - **EXCEPTION**: If there is no previous conversation history (first message), NEVER ignore. Answer it.
         
         ANSWERING RULES:
         1. Start with [QUESTION: ...].
@@ -475,6 +476,10 @@ async function streamAIResponse(element) {
         element.innerHTML = "";
         let finalOutput = "";
         let hasScrolled = false;
+
+        // Hide AI Panel Header to give more space
+        const aiHeader = document.querySelector('.ai-panel .panel-header');
+        if (aiHeader) aiHeader.style.display = 'none';
 
         for await (const part of response) {
             const text = part?.text || "";
@@ -502,25 +507,31 @@ async function streamAIResponse(element) {
 
                     htmlContent = qHtml + aHtml;
 
-                    // Scroll once we have the answer started
-                    if (!hasScrolled && answerText.length > 5) {
-                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    // Smart Scroll: Snap to top of answer ONCE
+                    if (!hasScrolled && (!finalOutput.startsWith("[") || finalOutput.length > 8)) {
+                        // Safer manual scroll:
+                        const container = displays.aiFeed;
+                        const elTop = element.offsetTop;
+                        container.scrollTo({ top: elTop - 20, behavior: 'smooth' }); // -20 for padding
                         hasScrolled = true;
                     }
                 } else {
                     // Tag not complete or not present yet.
-                    // If it looks like a tag is starting, wait a bit (don't show raw brackets)
                     if (finalOutput.startsWith("[")) {
-                        // Just show thinking until we close the bracket or get enough text to know it's not a tag
-                        if (finalOutput.length < 50) { // arbitrary buffer
+                        if (finalOutput.length < 50) {
                             element.innerHTML = "<em>Thinking...</em>";
                             continue;
                         }
                     }
-                    // Fallback to normal display if no tag found after buffer
+
+                    // Fallback
                     htmlContent = parseMarkdown(finalOutput);
+
+                    // Smart Scroll Fallback
                     if (!hasScrolled && finalOutput.length > 5) {
-                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        const container = displays.aiFeed;
+                        const elTop = element.offsetTop;
+                        container.scrollTo({ top: elTop - 20, behavior: 'smooth' });
                         hasScrolled = true;
                     }
                 }
@@ -536,11 +547,8 @@ async function streamAIResponse(element) {
             return null; // Don't save to history
         }
 
-        // Clean up the Q tag from the stored history? 
-        // User wants to save the ENTIRE thing (including [QUESTION]) so the AI 
-        // sees the pattern in history and continues to output it.
-
         return finalOutput;
+
     } catch (err) {
         console.error("AI Error:", err);
         element.innerHTML = "<span style='color:red'>AI Error</span>";
@@ -605,6 +613,12 @@ function updateTranscriptUI(finalT, interimT) {
 
     tempEl.innerHTML = `<strong>Inv:</strong> ${finalT} <span style='color:#888'>${interimT}</span>`;
     scrollToBottom(displays.transcriptFeed);
+
+    // Dynamic UI: Hide Header when transcription starts to save space
+    if (finalT || interimT) {
+        const trHeader = document.querySelector('.transcript-panel .panel-header');
+        if (trHeader) trHeader.style.display = 'none';
+    }
 }
 
 function addTranscriptBubble(text) {
@@ -727,6 +741,17 @@ function endSession() {
     if (state.recognition) state.recognition.stop();
     if (state.audioContext) state.audioContext.close();
     switchScreen('end');
+
+    // Restore AI header for next time
+    const aiHeader = document.querySelector('.ai-panel .panel-header');
+    if (aiHeader) aiHeader.style.display = 'flex';
+
+    const trHeader = document.querySelector('.transcript-panel .panel-header');
+    if (trHeader) trHeader.style.display = 'flex';
+
+    // Populate stats (basic for now)
+    displays.statWords.textContent = state.transcriptLog.reduce((acc, l) => acc + l.text.split(' ').length, 0) + " words";
+    displays.statInsights.textContent = state.aiLog.length + " generated";
 }
 
 function isSelfLoop(userText, lastAiText) {
