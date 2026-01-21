@@ -12,6 +12,8 @@
     <link rel="stylesheet" href="style.css">
     <!-- Material Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <!-- ONNX Runtime for VAD -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
 </head>
 
 <body>
@@ -106,7 +108,10 @@
                 <div style="width: 48px;"></div>
 
                 <!-- Status Text (absolute or moved) -->
-                <div id="status-text" class="status-overlay">Listening...</div>
+                <div class="status-stack">
+                    <div id="vad-status" class="vad-badge hidden">VAD: Waiting</div>
+                    <div id="status-text" class="status-overlay">Listening...</div>
+                </div>
             </footer>
         </section>
 
@@ -141,7 +146,7 @@
     <!-- Toast Notification -->
     <div id="toast" class="hidden">Notification</div>
 
-    <script src="script.js?v=39"></script>
+    <script src="script.js?v=53"></script>
 </body>
 
 </html>

@@ -16,6 +16,33 @@
     --radius-md: 12px;
 }
 
+.status-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    z-index: 100;
+}
+
+.vad-badge {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-muted);
+    transition: all 0.3s ease;
+}
+
+.vad-badge.speaking {
+    background: var(--success);
+    color: #000;
+    box-shadow: 0 0 10px var(--success);
+}
+
+.vad-badge.hidden {
+    opacity: 0;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -418,6 +445,11 @@ input:focus {
     padding: 20px;
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
+}
+
+#ai-feed {
+    padding-bottom: 70vh;
+    /* Allows scrolling the last item to the top */
 }
 
 /* Transcript styling */

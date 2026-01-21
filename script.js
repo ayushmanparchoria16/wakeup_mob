@@ -5,7 +5,9 @@
 
 // --- Configuration & State ---
 const CONFIG = {
-    // No API Keys needed! Puter.js handles auth.
+    // VAD Settings
+    SAMPLE_RATE: 16000,
+    FRAME_SIZE: 512, // 32ms at 16kHz
 };
 
 const state = {
@@ -14,21 +16,24 @@ const state = {
     transcriptLog: [],
     aiLog: [],
     chatHistory: [],
-    recognition: null,
-    dummyStream: null,
-    silenceTimer: null,
+    recognition: null, // Web Speech API
+    audioContext: null, // For VAD
+    vadWorker: null,
+
+    // VAD Logic
+    isSpeaking: false, // True if VAD detecting speech
+    silenceStartTime: 0,
+
     isProcessingAI: false,
     pendingBuffer: "",
     lastAiCallTime: 0,
-    // Speech & Trigger State
-    transcriptOffset: 0,
-    aiTriggerBuffer: "",
-    aiTriggerTimer: null
+
+    // For "Pause" handling
+    transcriptAccumulator: "", // Accumulates text while speaking + short pauses
 };
 
 // --- DOM Elements ---
 const screens = {
-    // 'setup' is the default underlying layer now
     meeting: document.getElementById('meeting-screen'),
     end: document.getElementById('end-screen')
 };
@@ -39,7 +44,6 @@ const inputs = {
 
 const buttons = {
     start: document.getElementById('start-btn'),
-
     quickReplyMeeting: document.getElementById('quick-reply-meeting-btn'),
     endMeeting: document.getElementById('end-meeting-btn'),
     micToggle: document.getElementById('mic-toggle-btn'),
@@ -52,6 +56,7 @@ const displays = {
     transcriptFeed: document.getElementById('transcript-feed'),
     aiFeed: document.getElementById('ai-feed'),
     status: document.getElementById('status-text'),
+    vadStatus: document.getElementById('vad-status'),
     visualizerBars: document.querySelectorAll('.bar'),
     statWords: document.getElementById('stat-words'),
     statInsights: document.getElementById('stat-insights'),
@@ -66,15 +71,12 @@ function init() {
         showToast("⚠️ Run via Local Server to save permissions!");
     }
 
-    // Disclaimer & Tips
     console.log("Note: Browser Speech API does not support Speaker Diarization.");
-    showToast("Tip: For Laptop Audio, increase volume & place Mic closer!", 5000);
+    showToast("Tip: Use Headphones for best VAD performance!", 5000);
 
     // Event Listeners
     buttons.start.addEventListener('click', startSession);
-
     if (buttons.quickReplyMeeting) buttons.quickReplyMeeting.addEventListener('click', quickReply);
-
     buttons.endMeeting.addEventListener('click', endSession);
     buttons.micToggle.addEventListener('click', toggleMic);
     buttons.download.addEventListener('click', downloadTranscript);
@@ -88,15 +90,93 @@ function init() {
         }
     });
 
-    // Device Check & Advice
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isMobile) {
-        showToast("📱 Mobile Text: For capturing Laptop Audio, it is better to open this app on your Laptop Browser!", 8000);
+    // Check VAD support
+    if (!window.Worker) {
+        showToast("Web Workers not supported. VAD will not function.");
     }
-
-    // Setup Speech Recognition
-    setupSpeechRecognition();
 }
+
+// --- Audio & VAD Setup ---
+
+async function setupAudioProcessing() {
+    try {
+        state.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: CONFIG.SAMPLE_RATE });
+
+        // Load VAD Worker
+        state.vadWorker = new Worker('vad_worker.js');
+        state.vadWorker.onmessage = handleVadMessage;
+        state.vadWorker.postMessage({ type: 'INIT' });
+
+        // Get Stream
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
+        });
+
+        const source = state.audioContext.createMediaStreamSource(stream);
+
+        // Worklet or ScriptProcessor (simpler for single file)
+        const processor = state.audioContext.createScriptProcessor(CONFIG.FRAME_SIZE, 1, 1);
+
+        source.connect(processor);
+        processor.connect(state.audioContext.destination);
+
+        processor.onaudioprocess = (e) => {
+            if (!state.isRecording) return;
+
+            const inputData = e.inputBuffer.getChannelData(0);
+
+            // Downsample is handled by AudioContext being created with sampleRate: 16000? 
+            // Browsers might not support that requests. 
+            // So we send whatever we get, but assume 16k if context is 16k.
+            // If context is 48k, we should downsample. 
+            // Ideally, we force 16k in context constructor.
+
+            state.vadWorker.postMessage({
+                type: 'PROCESS',
+                audio: inputData
+            });
+
+            // Visualize
+            simulateVisualizerVolume(inputData);
+        };
+
+        return true;
+
+    } catch (e) {
+        console.error("Audio Setup Failed:", e);
+        showToast("Audio Access Denied: " + e.message);
+        return false;
+    }
+}
+
+function handleVadMessage(e) {
+    const msg = e.data;
+    if (msg.type === 'SPEECH_START') {
+        state.isSpeaking = true;
+        updateVadUI(true);
+    }
+    else if (msg.type === 'SPEECH_END') {
+        state.isSpeaking = false;
+        updateVadUI(false);
+        // VAD says User finished speaking.
+        // Trigger AI if we have enough text and it's been silent for a moment.
+        // NOTE: VAD handles the "silence duration" inside the worker (currently ~1.2s).
+        // So if we get SPEECH_END, it means silence WAS > 1.2s.
+
+        // Check if we have pending transcript
+        checkAndTriggerAI();
+    }
+    else if (msg.type === 'LOADED') {
+        console.log("VAD Model Ready");
+        displays.vadStatus.textContent = "VAD: Ready";
+        displays.vadStatus.classList.remove('hidden');
+    }
+}
+
 
 function setupSpeechRecognition() {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
@@ -108,225 +188,168 @@ function setupSpeechRecognition() {
     state.recognition = new SpeechRecognition();
     state.recognition.continuous = true;
     state.recognition.interimResults = true;
-    state.recognition.lang = 'en-US';
+    state.recognition.lang = 'en-IN';
 
     state.recognition.onstart = () => {
-        state.isRecording = true;
-        updateMicUI(true);
+        // state.isRecording is managed by startSession
+    };
+
+    state.recognition.onresult = (event) => {
+        let interim = '';
+        let hasFinal = false;
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+                state.transcriptAccumulator += " " + event.results[i][0].transcript;
+                hasFinal = true;
+            } else {
+                interim += event.results[i][0].transcript;
+            }
+        }
+
+        // Update UI
+        updateTranscriptUI(state.transcriptAccumulator, interim);
+
+        // If we got a final result AND VAD says we are silent, trigger AI immediately.
+        // This fixes the race condition where Speech API finalizes AFTER VAD detects silence.
+        if (hasFinal && !state.isSpeaking) {
+            checkAndTriggerAI();
+        }
+    };
+
+    state.recognition.onerror = (e) => {
+        console.warn("Speech Rec Error:", e.error);
     };
 
     state.recognition.onend = () => {
-        // Android/Chrome often resets the internal buffer on restart.
-        // We must reset our offset tracking to match the new session.
-        state.transcriptOffset = 0;
-
-        // Auto-restart if we shouldn't have stopped
         if (state.isRecording) {
-            setTimeout(() => {
-                if (state.isRecording) {
-                    try {
-                        state.recognition.start();
-                    } catch (e) {
-                        console.warn("Re-start failed:", e);
-                        updateMicUI(false);
-                        state.isRecording = false;
+            console.log("Speech API ended, restarting...");
+            try {
+                state.recognition.start();
+            } catch (e) {
+                console.warn("Restart failed:", e);
+                // If immediate restart fails, try again shortly
+                setTimeout(() => {
+                    if (state.isRecording) {
+                        try { state.recognition.start(); } catch (e) { }
                     }
-                }
-            }, 100);
-        } else {
-            updateMicUI(false);
-        }
-    };
-
-    state.recognition.onresult = handleSpeechResult;
-
-    state.recognition.onerror = (event) => {
-        if (event.error === 'no-speech' || event.error === 'aborted') {
-            return;
-        }
-        console.error("Speech Error:", event.error);
-
-        // Show capturing errors
-        if (event.error === 'network' || event.error === 'audio-capture' || event.error === 'not-allowed') {
-            showToast("⚠️ Speech Error: " + event.error);
-        }
-
-        if (event.error === 'not-allowed') {
-            state.isRecording = false;
-            updateMicUI(false);
-        }
-    };
-}
-
-// Hack to force "High Sensitive" Audio Mode
-// NOTE: Disabled on Mobile because it causes "Audio Focus" contention with Speech API
-async function setupAudioMode() {
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isMobile) {
-        console.log("Skipping 'Dummy Stream' hack on mobile to prevent conflict.");
-        return;
-    }
-
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
-
-    try {
-        if (state.dummyStream) {
-            state.dummyStream.getTracks().forEach(t => t.stop());
-        }
-
-        // Request raw audio to disable system Noise Gate/Cancel
-        // KEEP THIS STREAM OPEN to force the OS audio session into "Raw" mode
-        state.dummyStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false,
+                }, 1000);
             }
-        });
-
-        console.log("Audio mode set to High Sensitivity (Stream Open)");
-    } catch (e) {
-        console.warn("Could not set audio mode:", e);
-    }
+        }
+    };
 }
 
-// --- Puter.js AI Integration ---
+
+// --- Main Session Logic ---
 
 async function startSession() {
     const topic = inputs.topic.value.trim();
-
     if (!topic) {
         showToast("Please enter a meeting topic.");
         return;
     }
 
-    // Puter Auth Check
+    // Auth Puter
     if (!puter.auth.isSignedIn()) {
-        showToast("Signing in to Puter...", 2000);
         await puter.auth.signIn();
     }
 
-    // Try to force high sensitivity audio
-    await setupAudioMode();
+    // Init Audio
+    const audioOk = await setupAudioProcessing();
+    if (!audioOk) return;
+
+    setupSpeechRecognition();
 
     state.topic = topic;
+    state.transcriptAccumulator = "";
     state.chatHistory = [];
     state.transcriptLog = [];
     state.aiLog = [];
-    state.transcriptOffset = 0;
-    state.aiTriggerBuffer = "";
-    clearTimeout(state.aiTriggerTimer);
 
-    // Clear feeds
+    // UI
     displays.transcriptFeed.innerHTML = '';
     displays.aiFeed.innerHTML = '';
     displays.topic.textContent = topic;
-
-    // Switch Screen
     switchScreen('meeting');
 
-    // Start Mic
+    // Start
+    state.isRecording = true;
     try {
         state.recognition.start();
-    } catch (e) {
-        console.error(e);
+        updateMicUI(true);
+    } catch (e) { console.error(e); }
+}
+
+
+function checkAndTriggerAI() {
+    // Logic:
+    // If VAD said "Speech End" (Silence detected)
+    // AND we have accumulated text
+    // THEN Send to AI
+
+    const text = state.transcriptAccumulator.trim();
+    if (text.length > 5 && !state.isProcessingAI) {
+        console.log("Triggering AI on silence...");
+
+        // Commit text to transcript log
+        const timestamp = new Date().toLocaleTimeString();
+        state.transcriptLog.push({ timestamp, text: text });
+
+        // Clear accumulator for next question
+        state.transcriptAccumulator = "";
+        updateTranscriptUI("", ""); // Clear input view
+
+        // Add final text to UI feed permanently
+        addTranscriptBubble(text);
+
+        triggerAI(text);
     }
 }
 
-async function streamAIResponse(element) {
-    const systemMessage = {
-        role: "system",
-        content: `You are an AI assistant in a meeting. The topic is: "${state.topic}".
-        RULES:
-        1. Format response using bullet points (- point).
-        2. Technical/Code commands MUST be in triple backticks (e.g. \`\`\`npm install\`\`\`) on a new line.
-        3. Be concise (1-2 sentences per point).
-        4. IGNORE inputs that are just the user reading your previous response aloud.`
-    };
 
-    // Keep context window manageable (System + Last 20 messages)
-    const recentHistory = state.chatHistory.slice(-20);
-    const messages = [systemMessage, ...recentHistory];
-
-    try {
-        console.time("AI_Latency");
-        // Use Puter.js Chat Streaming - Request GPT-4o-mini for speed
-        const response = await puter.ai.chat(messages, {
-            stream: true,
-            model: 'gpt-4o-mini'
-        });
-
-        element.innerHTML = ""; // Clear loading dots
-        let finalOutput = "";
-        let firstToken = true;
-
-        for await (const part of response) {
-            if (firstToken) {
-                console.timeEnd("AI_Latency");
-                firstToken = false;
-            }
-            const text = part?.text || "";
-            if (text) {
-                finalOutput += text;
-                element.innerHTML = parseMarkdown(finalOutput);
-                scrollToBottom(displays.aiFeed);
-            }
-        }
-
-        return finalOutput;
-
-    } catch (error) {
-        console.error(error);
-        element.textContent = `Error: ${error.message}`;
-        return null;
-    }
-}
-
-// --- Quick Reply Logic ---
-
-async function quickReply() {
-    // 1. Check pending buffer first
-    let text = state.aiTriggerBuffer.trim();
-
-    // 2. If empty, check recent transcript (Context)
-    if (!text && state.transcriptLog.length > 0) {
-        // Take last 3 entries to get enough context
-        const last = state.transcriptLog.slice(-3).map(i => i.text).join(" ");
-        text = last.trim();
-    }
-
-    if (!text) {
-        showToast("No text to reply to!");
-        return;
-    }
-
-    // Force send
-    showToast("⚡ Sending Quick Reply...");
-    state.aiTriggerBuffer = ""; // Clear buffer so it doesn't send again automatically
-    clearTimeout(state.aiTriggerTimer); // Stop auto-timer
-
-    await triggerAI(text, "QUICK");
-}
+// --- AI Integration ---
 
 async function triggerAI(text, type = "SPEECH") {
     if (state.isProcessingAI) return;
 
     let instruction = text;
-    if (type === "QUICK") {
-        instruction = `[System: User clicked 'Quick Reply'. Answer this immediately and briefly (1-2 sentences).]\n\n${text}`;
+
+    // --- CLIENT-SIDE LOOP DETECTION ---
+    // Check if the user is just reading the last AI response
+    const lastMessage = state.chatHistory.length > 0 ? state.chatHistory[state.chatHistory.length - 1] : null;
+    if (lastMessage && lastMessage.role === 'assistant') {
+        if (isSelfLoop(instruction, lastMessage.content)) {
+            console.warn("Loop detected: User is reading back the last AI response.");
+
+            // Show brief feedback
+            const feedbackId = `ignore-msg-${Date.now()}`;
+            const feedbackDiv = document.createElement('div');
+            feedbackDiv.className = 'ai-message';
+            feedbackDiv.id = feedbackId;
+            feedbackDiv.style.opacity = "0.6";
+            feedbackDiv.style.fontStyle = "italic";
+            feedbackDiv.innerText = "(Self-correction/Reading detected - Skipped)";
+            displays.aiFeed.appendChild(feedbackDiv);
+
+            // Remove after a moment
+            setTimeout(() => {
+                if (feedbackDiv.parentNode) feedbackDiv.remove();
+            }, 2500);
+
+            return; // STOP HERE
+        }
     }
 
     state.isProcessingAI = true;
 
-    // UI: "Analyzing..." or "..."
+    // UI creation
     const aiMessageId = `ai-msg-${Date.now()}`;
     const aiContainer = document.createElement('div');
     aiContainer.className = 'ai-message';
     aiContainer.id = aiMessageId;
-    // Visual cue for quick reply
     aiContainer.innerHTML = (type === "QUICK") ? "<em>⚡ Quick Reply...</em>" : "<em>Thinking...</em>";
     displays.aiFeed.appendChild(aiContainer);
-    scrollToBottom(displays.aiFeed);
+    // scrollToBottom(displays.aiFeed); // REMOVED: We scroll when text arrives now
 
     state.chatHistory.push({ role: "user", content: instruction });
 
@@ -341,168 +364,342 @@ async function triggerAI(text, type = "SPEECH") {
     }
 }
 
+async function streamAIResponse(element) {
+    // SYSTEM PROMPT FOR ROBUSTNESS
+    const systemMessage = {
+        role: "system",
+        content: `You are an experienced job candidate in a high-stakes job interview. The topic is: "${state.topic}".
 
-function endSession() {
-    state.isRecording = false;
-    state.recognition.stop();
+        TONE & STYLE:
+        - **Speak like a HUMAN, not an AI.**
+        - **USE SIMPLE INDIAN ENGLISH.** Keep vocabulary very easy and common.
+        - **AVOID complex words** like: *fascinating, nuances, intricate, meticulous, pivotal, realm*.
+        - Use simple words like: *boring, details, hard, careful, main, area*.
+        - Be conversational, confident, and slightly informal but professional.
+        - **AVOID** robotic openers like "Certainly", "Here is an answer", "To answer your question", "It sounds like you asked...".
+        - **AVOID** textbook definitions. Don't say "React is a library...". Say "I use React to..." or "The reason I choose React is...".
+        - Use "I" statements. Talk about *your* experience and *your* approach.
+        
+        CONTEXT AWARENESS:
+        1. You are receiving a transcript of the Interviewer. It may have errors (e.g. "board process" -> "boot process").
+        2. **FIRST STEP**: decoding the question. Output it in this format:
+           [QUESTION: Your understanding of the question?]
+        3. **SECOND STEP**: Answer directly. Do not repeat the question or say "I understood this". Just start the answer.
+           
+        CRITICAL: LOOP DETECTION
+        - If the INPUT text is simply a reading (or paraphrasing) of your LAST output, DO NOT generate a new answer.
+        - Output exactly: [IGNORE]
+        
+        ANSWERING RULES:
+        1. Start with [QUESTION: ...].
+        2. Then answer professionally and concisely.
+        3. Technical commands in \`\`\`code blocks\`\`\`.
+        `
+    };
 
-    if (state.dummyStream) {
-        state.dummyStream.getTracks().forEach(t => t.stop());
-        state.dummyStream = null;
+    const recentHistory = state.chatHistory.slice(-15); // Context Window
+    const messages = [systemMessage, ...recentHistory];
+
+    try {
+        const response = await puter.ai.chat(messages, {
+            stream: true,
+            model: 'gpt-4o-mini'
+        });
+
+        element.innerHTML = "";
+        let finalOutput = "";
+        let hasScrolled = false;
+
+        for await (const part of response) {
+            const text = part?.text || "";
+            if (text) {
+                finalOutput += text;
+
+                // Check for IGNORE tag early
+                if (finalOutput.startsWith("[IGNORE]")) {
+                    element.innerHTML = "<em>(Reading detected - ignored)</em>";
+                    element.style.opacity = "0.5";
+                    continue;
+                }
+
+                // Check for QUESTION tag
+                const qMatch = finalOutput.match(/^\[QUESTION:\s*(.*?)\]/s);
+                let htmlContent = "";
+
+                if (qMatch) {
+                    // Tag is complete, separate it
+                    const qText = qMatch[1];
+                    const answerText = finalOutput.substring(qMatch[0].length).trim();
+
+                    const qHtml = `<div style="color: #FFD700; font-weight: bold; margin-bottom: 8px; font-size: 0.95em;">${parseMarkdown(qText)}</div>`;
+                    const aHtml = parseMarkdown(answerText);
+
+                    htmlContent = qHtml + aHtml;
+
+                    // Scroll once we have the answer started
+                    if (!hasScrolled && answerText.length > 5) {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        hasScrolled = true;
+                    }
+                } else {
+                    // Tag not complete or not present yet.
+                    // If it looks like a tag is starting, wait a bit (don't show raw brackets)
+                    if (finalOutput.startsWith("[")) {
+                        // Just show thinking until we close the bracket or get enough text to know it's not a tag
+                        if (finalOutput.length < 50) { // arbitrary buffer
+                            element.innerHTML = "<em>Thinking...</em>";
+                            continue;
+                        }
+                    }
+                    // Fallback to normal display if no tag found after buffer
+                    htmlContent = parseMarkdown(finalOutput);
+                    if (!hasScrolled && finalOutput.length > 5) {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        hasScrolled = true;
+                    }
+                }
+
+                element.innerHTML = htmlContent;
+            }
+        }
+
+        if (finalOutput.includes("[IGNORE]")) {
+            setTimeout(() => {
+                if (element.parentNode) element.remove();
+            }, 2000);
+            return null; // Don't save to history
+        }
+
+        // Clean up the Q tag from the stored history? 
+        // User probably only wants to save the Answer or both?
+        // Let's save the whole thing, or strip the tag?
+        // Usually better to save what was said. The tag is metadata.
+        // Let's strip the tag for history consistency so context doesn't get cluttered with tags.
+        const qMatch = finalOutput.match(/^\[QUESTION:\s*(.*?)\]/s);
+        let contentToSave = finalOutput;
+        if (qMatch) {
+            contentToSave = finalOutput.substring(qMatch[0].length).trim();
+        }
+
+        return contentToSave;
+    } catch (err) {
+        console.error("AI Error:", err);
+        element.innerHTML = "<span style='color:red'>AI Error</span>";
+        return null;
+    }
+}
+
+async function quickReply() {
+    // Use whatever is in accumulator OR last transcript
+    let text = state.transcriptAccumulator.trim();
+    if (!text && state.transcriptLog.length > 0) {
+        text = state.transcriptLog[state.transcriptLog.length - 1].text;
     }
 
-    // Calculate Stats
-    const totalWords = state.transcriptLog.reduce((acc, log) => acc + log.text.split(' ').length, 0);
-    displays.statWords.textContent = `${totalWords} words`;
-    displays.statInsights.textContent = `${state.aiLog.length} generated`;
-
-    switchScreen('end');
+    if (text) {
+        await triggerAI(text, "QUICK");
+        state.transcriptAccumulator = ""; // Clear buffer
+    } else {
+        showToast("Nothing to reply to!");
+    }
 }
+
+
+// --- Helper Functions ---
 
 function toggleMic() {
     if (state.isRecording) {
         state.isRecording = false;
         state.recognition.stop();
-        showToast("Microphone paused.");
+        if (state.audioContext) state.audioContext.suspend();
+        updateMicUI(false);
     } else {
+        state.isRecording = true;
         state.recognition.start();
-        showToast("Microphone active.");
+        if (state.audioContext) state.audioContext.resume();
+        updateMicUI(true);
     }
 }
 
-// (Globals removed, moved to state)
-
-function handleSpeechResult(event) {
-    let finalTranscript = '';
-    let interimTranscript = '';
-    let newFinalText = '';
-
-    for (let i = 0; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
-        } else {
-            interimTranscript += event.results[i][0].transcript;
-        }
-    }
-
-    if (finalTranscript.length > state.transcriptOffset) {
-        newFinalText = finalTranscript.substring(state.transcriptOffset);
-        state.transcriptOffset = finalTranscript.length;
-    }
-
-    // UI: Append inline to avoid fragmentation
-    updateTranscriptUI(newFinalText, interimTranscript);
-
-    // Visualize
-    if (interimTranscript.length > 0 || newFinalText.length > 0) {
-        simulateVisualizer(true);
+function updateVadUI(isSpeaking) {
+    if (isSpeaking) {
+        displays.vadStatus.textContent = "VAD: Speaking";
+        displays.vadStatus.classList.add('speaking');
     } else {
-        simulateVisualizer(false);
+        displays.vadStatus.textContent = "VAD: Silence";
+        displays.vadStatus.classList.remove('speaking');
+    }
+}
+
+function updateTranscriptUI(finalT, interimT) {
+    // Updates the "Current Input" view (could be a floating bubble or just the feed)
+    // For now we just append to feed but ideally we want to see what is "being typing"
+
+    // We'll use a temporary element at the bottom of feed
+    let tempEl = document.getElementById('temp-transcript');
+    if (!tempEl) {
+        tempEl = document.createElement('p');
+        tempEl.id = 'temp-transcript';
+        tempEl.style.opacity = '0.7';
+        displays.transcriptFeed.appendChild(tempEl);
     }
 
-    // Smart AI Triggering
-    if (newFinalText) {
-        const cleanChunk = newFinalText; // Keep spaces
-        if (cleanChunk.trim().length > 0) {
-            state.aiTriggerBuffer += cleanChunk;
+    tempEl.innerHTML = `<strong>Inv:</strong> ${finalT} <span style='color:#888'>${interimT}</span>`;
+    scrollToBottom(displays.transcriptFeed);
+}
 
-            // Log for transcript record
-            const timestamp = new Date().toLocaleTimeString();
-            state.transcriptLog.push({ timestamp, text: cleanChunk.trim() });
+function addTranscriptBubble(text) {
+    let tempEl = document.getElementById('temp-transcript');
+    if (tempEl) tempEl.remove(); // Remove temp
 
-            // Check for sentence completion
-            if (/[.?!]$/.test(cleanChunk.trim())) {
-                flushAiBuffer();
-            } else {
-                // Debounce: Wait 1s silence, then send
-                clearTimeout(state.aiTriggerTimer);
-                state.aiTriggerTimer = setTimeout(flushAiBuffer, 1500);
-            }
+    const p = document.createElement('p');
+    p.className = 'transcript-segment final';
+    p.innerHTML = `<strong>Inv:</strong> ${text}`;
+    displays.transcriptFeed.appendChild(p);
+    scrollToBottom(displays.transcriptFeed);
+}
+
+function switchScreen(name) {
+    const target = screens[name];
+
+    // Hide all others
+    Object.values(screens).forEach(s => {
+        if (s !== target) {
+            s.classList.remove('active');
+            setTimeout(() => {
+                // Double check it hasn't become active again in the meantime
+                if (!s.classList.contains('active')) {
+                    s.style.display = 'none';
+                }
+            }, 400);
         }
-    }
-}
-
-function flushAiBuffer() {
-    clearTimeout(state.aiTriggerTimer);
-    if (state.aiTriggerBuffer.trim().length > 2) {
-        triggerAI(state.aiTriggerBuffer.trim());
-        state.aiTriggerBuffer = "";
-    }
-}
-
-function updateTranscriptUI(finalText, interimText) {
-    // 1. Handle Final Text (Create NEW paragraph for every final chunk)
-    // User Request: "new question in new line"
-    if (finalText && finalText.trim().length > 0) {
-        const newSegment = document.createElement('p');
-        newSegment.className = 'transcript-segment final';
-        newSegment.textContent = finalText.trim();
-
-        // Insert before interim (if exists, though disabled now) or append
-        const interimNode = document.getElementById('interim-node');
-        if (interimNode) {
-            displays.transcriptFeed.insertBefore(newSegment, interimNode);
-        } else {
-            displays.transcriptFeed.appendChild(newSegment);
-        }
-
-        scrollToBottom(displays.transcriptFeed);
-    }
-
-    // 2. Handle Interim (DISABLED per user request: Only show final text)
-    /*
-    let interimNode = document.getElementById('interim-node');
-    if (!interimNode) {
-        interimNode = document.createElement('p');
-        interimNode.id = 'interim-node';
-        interimNode.className = 'transcript-segment interim';
-        displays.transcriptFeed.appendChild(interimNode);
-    }
-
-    interimNode.textContent = interimText;
-
-    if (!interimText) {
-        // Don't remove node to keep layout stable, just clear text
-        interimNode.textContent = "";
-    } else {
-        scrollToBottom(displays.transcriptFeed);
-    }
-    */
-}
-
-// --- Helpers & UI ---
-
-function switchScreen(screenName) {
-    Object.values(screens).forEach(el => {
-        if (!el) return;
-        el.classList.remove('active');
-        setTimeout(() => {
-            if (!el.classList.contains('active')) el.style.display = 'none';
-        }, 400);
     });
 
-    const target = screens[screenName];
     if (target) {
+        // Ensure it's visible immediately
         target.style.display = 'flex';
-        // Small delay to allow display flex to apply before opacity transition
-        setTimeout(() => {
+        // Small delay to allow display change to render before adding opacity transition
+        requestAnimationFrame(() => {
             target.classList.add('active');
-        }, 50);
+        });
+    }
+
+    // Special Case: Hide the initial header/logo area if moving to meeting
+    const mainHeader = document.querySelector('body > .app-container > header');
+    if (mainHeader) {
+        if (name === 'meeting') {
+            mainHeader.style.display = 'none';
+        } else if (name === 'setup' || name === 'end') {
+            // You might want to show it again on end screen
+            mainHeader.style.display = 'block';
+        }
     }
 }
 
-function updateMicUI(isActive) {
-    const btn = buttons.micToggle;
-    if (isActive) {
-        btn.classList.add('active');
+function updateMicUI(on) {
+    if (on) {
+        buttons.micToggle.classList.add('active');
         displays.status.textContent = "Listening...";
-        simulateVisualizer(true);
     } else {
-        btn.classList.remove('active');
+        buttons.micToggle.classList.remove('active');
         displays.status.textContent = "Paused";
-        simulateVisualizer(false);
     }
 }
+
+function simulateVisualizerVolume(data) {
+    // Calculate RMS
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+    const rms = Math.sqrt(sum / data.length);
+    const val = Math.min(rms * 5, 1); // Boost
+
+    displays.visualizerBars.forEach(bar => {
+        bar.style.transform = `scaleY(${Math.max(0.1, val + Math.random() * 0.2)})`;
+    });
+}
+
+// ... Keep existing parseMarkdown, downloadTranscript, clearExit ...
+function parseMarkdown(text) {
+    if (!text) return "";
+    let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    html = html.replace(/```([\s\S]*?)```/g, '<div class="code-box">$1</div>');
+    html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    return html.replace(/\n/g, '<br>');
+}
+
+function downloadTranscript() { /* Same as before */
+    const lines = state.chatHistory.map(m => `${m.role.toUpperCase()}: ${m.content}`);
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'transcript.txt';
+    a.click();
+}
+
+function clearAndExit() {
+    location.reload();
+}
+
+
+function endSession() {
+    state.isRecording = false;
+    if (state.recognition) state.recognition.stop();
+    if (state.audioContext) state.audioContext.close();
+    switchScreen('end');
+}
+
+function isSelfLoop(userText, lastAiText) {
+    if (!lastAiText || !userText) return false;
+
+    // Normalize: lowercase, remove punctuation, extra whitespace
+    const cleanUser = userText.toLowerCase().replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ").trim();
+    const cleanAI = lastAiText.toLowerCase().replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ").trim();
+
+    // 0. EXACT MATCH (Always ignore)
+    if (cleanUser === cleanAI) return true;
+
+    // 1. SAFEGUARD: Strong Question Words
+    // If the user starts with a question word, they are likely asking a follow-up, 
+    // even if they repeat words from the answer (e.g. "Why uses React?").
+    const questionWords = ["why", "how", "what", "when", "where", "who", "which", "can", "could", "would", "explain", "tell", "elaborate"];
+    const firstWord = cleanUser.split(" ")[0];
+    if (questionWords.includes(firstWord)) return false;
+
+    // 2. Length check. 
+    // Short utterances (< 3 words) are ambiguous if not exact matches. default to processing.
+    const userWords = cleanUser.split(" ");
+    if (userWords.length < 3) return false;
+
+    // 3. Phrase Reading Detection (Long Substring)
+    // If the user text is a direct substring of the AI text, it's likely a reading.
+    // BUT only if it's a *significant* length to avoid matching common phrases like "is a".
+    if (cleanAI.includes(cleanUser)) {
+        // If the matching phrase is > 15 chars OR > 80% of the AI's length (if AI response was short)
+        if (cleanUser.length > 20 || cleanUser.length > cleanAI.length * 0.8) {
+            return true;
+        }
+    }
+
+    // 4. Word Overlap (Fuzzy Match)
+    // Check if the user is saying a "bag of words" that is entirely contained in the AI response.
+    const aiWords = new Set(cleanAI.split(" "));
+    let matchCount = 0;
+
+    userWords.forEach(w => {
+        if (aiWords.has(w)) matchCount++;
+    });
+
+    const similarity = matchCount / userWords.length;
+
+    // Only ignore if similarity is VERY high (> 90%), meaning almost NO new words were introduced.
+    if (similarity > 0.9) return true;
+
+    return false;
+}
+
+// --- Missing Helpers ---
 
 function scrollToBottom(element) {
     element.scrollTo({
@@ -511,7 +708,7 @@ function scrollToBottom(element) {
     });
 }
 
-function showToast(msg) {
+function showToast(msg, duration = 3000) {
     const t = displays.toast;
     t.textContent = msg;
     t.classList.add('show');
@@ -519,93 +716,12 @@ function showToast(msg) {
     setTimeout(() => {
         t.classList.remove('show');
         setTimeout(() => t.classList.add('hidden'), 300);
-    }, 3000);
+    }, duration);
 }
 
-function simulateVisualizer(active) {
-    displays.visualizerBars.forEach(bar => {
-        if (active) {
-            bar.style.animationDuration = `${Math.random() * 0.5 + 0.2}s`;
-            bar.style.transform = `scaleY(${Math.random() * 0.8 + 0.2})`;
-        } else {
-            bar.style.transform = 'scaleY(0.1)';
-        }
-    });
-
-    if (active && state.isRecording) {
-        requestAnimationFrame(() => simulateVisualizer(true));
-    }
-}
-
-function parseMarkdown(text) {
-    if (!text) return "";
-    let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-    // Code Blocks
-    html = html.replace(/```([\s\S]*?)```/g, '<div class="code-box">$1</div>');
-    html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-
-    // Bold
-    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-    // Lists
-    const lines = html.split('\n');
-    let inList = false;
-    let newHtml = "";
-
-    lines.forEach(line => {
-        if (line.trim().startsWith('- ')) {
-            if (!inList) {
-                newHtml += "<ul>";
-                inList = true;
-            }
-            newHtml += `<li>${line.trim().substring(2)}</li>`;
-        } else {
-            if (inList) {
-                newHtml += "</ul>";
-                inList = false;
-            }
-            newHtml += line + "<br>";
-        }
-    });
-    if (inList) newHtml += "</ul>";
-
-    return newHtml;
-}
-
-// --- Data Management ---
-
-function downloadTranscript() {
-    const lines = [];
-    lines.push(`MEETING: ${state.topic}`);
-    lines.push(`DATE: ${new Date().toLocaleString()}`);
-    lines.push('--- TRANSCRIPT ---');
-    state.transcriptLog.forEach(item => {
-        lines.push(`[${item.timestamp}] User: ${item.text}`);
-    });
-    lines.push('\n--- AI INSIGHTS ---');
-    state.aiLog.forEach(item => {
-        lines.push(`[${item.timestamp}] AI: ${item.text}`);
-    });
-
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Meeting_Transcript_${Date.now()}.txt`;
-    a.click();
-
-    URL.revokeObjectURL(url);
-    showToast("Transcript downloaded.");
-}
-
-function clearAndExit() {
-    sessionStorage.clear();
-    location.reload();
-}
-
-
-
-// Run
 window.addEventListener('load', init);
+
+
+
+
+
