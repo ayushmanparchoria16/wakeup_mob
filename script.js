@@ -100,10 +100,28 @@ function init() {
 
 async function setupAudioProcessing() {
     try {
-        state.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: CONFIG.SAMPLE_RATE });
+        state.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+            sampleRate: CONFIG.SAMPLE_RATE,
+            latencyHint: 'interactive'
+        });
+
+        // Mobile browsers often ignore the requested sampleRate in the constructor
+        const actualRate = state.audioContext.sampleRate;
+        console.log(`Audio Context Created. Requested: ${CONFIG.SAMPLE_RATE}, Actual: ${actualRate}`);
 
         // Load VAD Worker
-        state.vadWorker = new Worker('vad_worker.js');
+        try {
+            state.vadWorker = new Worker('./vad_worker.js');
+            state.vadWorker.onerror = (err) => {
+                console.error("VAD Worker Error:", err);
+                showToast("Error loading VAD Worker. Check console.");
+            };
+        } catch (workerErr) {
+            console.error("Worker Creation Failed:", workerErr);
+            showToast("Failed to initialize VAD. Browser might block workers.");
+            return false;
+        }
+
         state.vadWorker.onmessage = handleVadMessage;
         state.vadWorker.postMessage({ type: 'INIT' });
 
@@ -129,21 +147,25 @@ async function setupAudioProcessing() {
 
             const inputData = e.inputBuffer.getChannelData(0);
 
-            // Downsample is handled by AudioContext being created with sampleRate: 16000? 
-            // Browsers might not support that requests. 
-            // So we send whatever we get, but assume 16k if context is 16k.
-            // If context is 48k, we should downsample. 
-            // Ideally, we force 16k in context constructor.
+            // --- SMART DOWNSAMPLER ---
+            // "The Funnel": If audio is too fast (e.g. 48k on mobile), slow it down to 16k
+            let vadInput = inputData;
+
+            if (actualRate !== CONFIG.SAMPLE_RATE) {
+                vadInput = downsampleBuffer(inputData, actualRate, CONFIG.SAMPLE_RATE);
+            }
 
             state.vadWorker.postMessage({
                 type: 'PROCESS',
-                audio: inputData
+                audio: vadInput
             });
 
             // Visualize
             simulateVisualizerVolume(inputData);
         };
 
+        // Notify debug
+        showToast(`Audio Ready: ${actualRate}Hz`);
         return true;
 
     } catch (e) {
@@ -151,6 +173,36 @@ async function setupAudioProcessing() {
         showToast("Audio Access Denied: " + e.message);
         return false;
     }
+}
+
+// Helper: The "Funnel" that shrinks audio
+function downsampleBuffer(buffer, sampleRate, outSampleRate) {
+    if (outSampleRate === sampleRate) {
+        return buffer;
+    }
+    if (outSampleRate > sampleRate) {
+        // Upsampling not supported/needed
+        return buffer;
+    }
+    const sampleRateRatio = sampleRate / outSampleRate;
+    const newLength = Math.round(buffer.length / sampleRateRatio);
+    const result = new Float32Array(newLength);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
+
+    while (offsetResult < result.length) {
+        const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+        // Use average value of accumulated samples (simple downsampling)
+        let accum = 0, count = 0;
+        for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+            accum += buffer[i];
+            count++;
+        }
+        result[offsetResult] = count > 0 ? accum / count : 0;
+        offsetResult++;
+        offsetBuffer = nextOffsetBuffer;
+    }
+    return result;
 }
 
 function handleVadMessage(e) {
@@ -471,17 +523,10 @@ async function streamAIResponse(element) {
         }
 
         // Clean up the Q tag from the stored history? 
-        // User probably only wants to save the Answer or both?
-        // Let's save the whole thing, or strip the tag?
-        // Usually better to save what was said. The tag is metadata.
-        // Let's strip the tag for history consistency so context doesn't get cluttered with tags.
-        const qMatch = finalOutput.match(/^\[QUESTION:\s*(.*?)\]/s);
-        let contentToSave = finalOutput;
-        if (qMatch) {
-            contentToSave = finalOutput.substring(qMatch[0].length).trim();
-        }
+        // User wants to save the ENTIRE thing (including [QUESTION]) so the AI 
+        // sees the pattern in history and continues to output it.
 
-        return contentToSave;
+        return finalOutput;
     } catch (err) {
         console.error("AI Error:", err);
         element.innerHTML = "<span style='color:red'>AI Error</span>";
