@@ -99,12 +99,19 @@
             <footer class="controls">
 
 
+                <!-- End Session Button (Always Visible) -->
+                <button id="end-session-btn" class="fab-mini danger-btn-sm" title="End Session">
+                    <span class="material-icons-round">stop</span>
+                </button>
+
                 <!-- Center Mic -->
                 <button id="mic-toggle-btn" class="fab">
                     <span class="material-icons-round">mic</span>
                 </button>
 
-                <!-- Spacer for balance -->
+                <!-- Spacer for balance / Quick Reply -->
+                <!-- We can repurpose this space or keep it for symmetry if needed, 
+                     but let's make sure the layout is balanced. -->
                 <div style="width: 48px;"></div>
 
                 <!-- Status Text (absolute or moved) -->
@@ -146,7 +153,7 @@
     <!-- Toast Notification -->
     <div id="toast" class="hidden">Notification</div>
 
-    <script src="script.js?v=56"></script>
+    <script src="script.js?v=58"></script>
 </body>
 
 </html>

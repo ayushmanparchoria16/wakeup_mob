@@ -271,16 +271,30 @@ function setupSpeechRecognition() {
 
     state.recognition.onerror = (e) => {
         console.warn("Speech Rec Error:", e.error);
+
+        // Filter out common minor errors
+        if (e.error === 'no-speech') return;
+
+        if (e.error === 'network') {
+            showToast("Network Error: Transcript may stop.");
+        } else if (e.error === 'not-allowed') {
+            showToast("Microphone Blocked. Check permissions.");
+        } else {
+            showToast(`Speech Error: ${e.error}`);
+        }
     };
 
     state.recognition.onend = () => {
+        // Only restart if we are still logically "recording"
         if (state.isRecording) {
-            console.log("Speech API ended, restarting...");
+            console.log("Speech API ended, attempting restart...");
             try {
+                // Determine if we need a slight delay to prevent crash-loops
+                // (e.g. if error was 'no-speech', restart is fast. If 'network', maybe wait)
                 state.recognition.start();
             } catch (e) {
                 console.warn("Restart failed:", e);
-                // If immediate restart fails, try again shortly
+                // If immediate restart fails, try again shortly with a backoff
                 setTimeout(() => {
                     if (state.isRecording) {
                         try { state.recognition.start(); } catch (e) { }
@@ -673,13 +687,33 @@ function parseMarkdown(text) {
     return html.replace(/\n/g, '<br>');
 }
 
-function downloadTranscript() { /* Same as before */
-    const lines = state.chatHistory.map(m => `${m.role.toUpperCase()}: ${m.content}`);
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+function downloadTranscript() {
+    let output = "INTERVIEW Q&A SESSION\n\n";
+
+    state.chatHistory.forEach(msg => {
+        if (msg.role === 'assistant') {
+            let content = msg.content;
+            let question = "Unknown Question";
+            let answer = content;
+
+            // Parse [QUESTION: ...]
+            const qMatch = content.match(/^\[QUESTION:\s*(.*?)\]/s);
+            if (qMatch) {
+                question = qMatch[1].trim();
+                answer = content.substring(qMatch[0].length).trim();
+            }
+
+            output += `QUESTION: ${question}\n`;
+            output += `ANSWER: ${answer}\n`;
+            output += "--------------------------------------------------\n\n";
+        }
+    });
+
+    const blob = new Blob([output], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'transcript.txt';
+    a.download = 'interview_qa.txt';
     a.click();
 }
 
