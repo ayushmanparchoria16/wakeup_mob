@@ -1,6 +1,6 @@
 import urllib.request, json
 try:
-    url = "https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyAbXokKeOYOYuLtVfy3m5czWybQd2U-G-U"
+    url = "https://generativelanguage.googleapis.com/v1beta/models?key="
     resp = urllib.request.urlopen(url).read().decode()
     data = json.loads(resp)
     for m in data.get('models', []):
