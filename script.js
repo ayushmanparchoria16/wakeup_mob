@@ -200,15 +200,13 @@ function startSilenceDetectionLoop() {
                 if (state.silenceStartTime === 0) {
                     state.silenceStartTime = Date.now();
                 } else if (Date.now() - state.silenceStartTime > CONFIG.SILENCE_DELAY_MS) {
-                    // Silence has lasted long enough, trigger cutoff
+                    // Silence has lasted long enough, update UI
                     state.isSpeaking = false;
                     updateVadUI(false);
                     state.silenceStartTime = 0;
 
-                    // Stop the recorder. The `onstop` event will trigger Puter formatting.
-                    if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
-                        state.mediaRecorder.stop();
-                    }
+                    // We no longer auto-stop the recorder on silence.
+                    // The user must manually toggle the mic to submit the recording.
                 }
             }
         }
@@ -410,11 +408,6 @@ async function streamAIResponse(element) {
         2. **FIRST STEP**: decoding the question. Output it in this format:
            [QUESTION: Your understanding of the question?]
         3. **SECOND STEP**: Answer directly. Do not repeat the question or say "I understood this". Just start the answer.
-           
-        CRITICAL: LOOP DETECTION
-        - If the INPUT text is simply a reading (or paraphrasing) of your LAST output, DO NOT generate a new answer.
-        - Output exactly: [IGNORE]
-        - **EXCEPTION**: If there is no previous conversation history (first message), NEVER ignore. Answer it.
         
         ANSWERING RULES:
         1. Start with [QUESTION: ...].
@@ -444,13 +437,6 @@ async function streamAIResponse(element) {
             const text = part?.text || "";
             if (text) {
                 finalOutput += text;
-
-                // Check for IGNORE tag early
-                if (finalOutput.startsWith("[IGNORE]")) {
-                    element.innerHTML = "<em>(Reading detected - ignored)</em>";
-                    element.style.opacity = "0.5";
-                    continue;
-                }
 
                 // Check for QUESTION tag
                 const qMatch = finalOutput.match(/^\[QUESTION:\s*(.*?)\]/s);
@@ -497,13 +483,6 @@ async function streamAIResponse(element) {
 
                 element.innerHTML = htmlContent;
             }
-        }
-
-        if (finalOutput.includes("[IGNORE]")) {
-            setTimeout(() => {
-                if (element.parentNode) element.remove();
-            }, 2000);
-            return null; // Don't save to history
         }
 
         return finalOutput;
