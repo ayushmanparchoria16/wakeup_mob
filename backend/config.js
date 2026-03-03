@@ -187,12 +187,20 @@ function handleRequest(params) {
                 return createJsonResponse({ status: 'error', message: 'No transcript text provided.' });
             }
 
-            // 1. Create the File in Google Drive
-            // We use the root folder by default, but you could specify a folder ID
+            // 1. Create the File in the specific Google Drive Folder
+            const FOLDER_ID = "1sEZAHc_VGMDsDv776Ew4dpJDSbLYyXCW";
             const dateStr = new Date().toLocaleDateString();
             const fileName = `${dateStr} - ${topic} Transcript.txt`;
 
-            const file = DriveApp.createFile(fileName, transcriptText, MimeType.PLAIN_TEXT);
+            let targetFolder;
+            try {
+                targetFolder = DriveApp.getFolderById(FOLDER_ID);
+            } catch (e) {
+                // Fallback to root if folder ID is invalid/inaccessible
+                targetFolder = DriveApp.getRootFolder();
+            }
+
+            const file = targetFolder.createFile(fileName, transcriptText, MimeType.PLAIN_TEXT);
             const fileUrl = file.getUrl();
 
             // Optional: Make it viewable by anyone with the link
