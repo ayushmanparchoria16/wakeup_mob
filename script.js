@@ -35,6 +35,9 @@ const state = {
 
     transcriptAccumulator: "",
     currentUser: null,
+
+    micMode: 'INTERVIEWER', // 'INTERVIEWER' or 'USER'
+    lastFinishedMode: null
 };
 
 // --- DOM Elements ---
@@ -404,8 +407,9 @@ function setupMediaRecorder() {
         }
 
         // Process the audio we just captured
-        if (!state.isProcessingAI) {
-            processAudioWithPuter(audioBlob);
+        const modeForThisChunk = state.lastFinishedMode || state.micMode;
+        if (!state.isProcessingAI || modeForThisChunk === 'USER') {
+            processAudioWithPuter(audioBlob, modeForThisChunk);
         }
     };
 }
@@ -466,32 +470,34 @@ function startSilenceDetectionLoop() {
     state.analysisInterval = requestAnimationFrame(checkVolume);
 }
 
-async function processAudioWithPuter(audioBlob) {
+async function processAudioWithPuter(audioBlob, mode) {
     if (audioBlob.size < 1000) return; // Ignore empty/tiny blobs
 
     // We can show an interim UI here since audio has ended
-    updateTranscriptUI("Transcribing...", "");
+    updateTranscriptUI("Transcribing...", "", mode);
 
     try {
-        console.log("Sending audio to Puter to transcribe...");
-        // Puter API natively accepts Blobs/Files
+        console.log(`Sending audio to Puter (${mode})...`);
         const response = await puter.ai.speech2txt(audioBlob);
 
-        const finalTranscript = response.text || response; // Depends on puter response wrapping
+        const finalTranscript = response.text || response;
 
         if (finalTranscript && finalTranscript.trim().length > 3) {
             const cleanText = finalTranscript.trim();
-            console.log("Transcription result:", cleanText);
+            console.log(`Transcription (${mode}):`, cleanText);
 
             // Log it
             const timestamp = new Date().toLocaleTimeString();
-            state.transcriptLog.push({ timestamp, text: cleanText });
+            state.transcriptLog.push({ timestamp, text: cleanText, mode: mode });
 
             // Add final text to UI feed permanently
-            addTranscriptBubble(cleanText);
+            addTranscriptBubble(cleanText, mode);
 
-            // Send to Assistant
-            triggerAI(cleanText);
+            // Send to Assistant ONLY if Interviewer
+            if (mode === 'INTERVIEWER') {
+                // If it's an interviewer, trigger AI
+                triggerAI(cleanText);
+            }
         } else {
             // Clear the "Transcribing..." text if nothing was found
             const tempEl = document.getElementById('temp-transcript');
@@ -547,6 +553,9 @@ async function startSession() {
 
     // Start
     state.isRecording = true;
+    state.micMode = 'INTERVIEWER';
+    state.lastFinishedMode = null;
+
     try {
         if (state.mediaRecorder && state.mediaRecorder.state === 'inactive') {
             state.mediaRecorder.start();
@@ -554,7 +563,7 @@ async function startSession() {
         if (state.audioContext.state === 'suspended') {
             state.audioContext.resume();
         }
-        updateMicUI(true);
+        updateMicUI();
     } catch (e) { console.error(e); }
 }
 
@@ -768,24 +777,34 @@ async function quickReply() {
 // --- Helper Functions ---
 
 function toggleMic() {
-    if (state.isRecording) {
-        state.isRecording = false;
-
-        if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
-            state.mediaRecorder.stop();
-        }
-        if (state.audioContext) state.audioContext.suspend();
-
-        updateMicUI(false);
-    } else {
+    if (!state.isRecording) {
+        // First manual start (if stopped completely)
         state.isRecording = true;
+        state.micMode = 'INTERVIEWER';
+        state.lastFinishedMode = null;
 
         if (state.mediaRecorder && state.mediaRecorder.state === 'inactive') {
             state.mediaRecorder.start();
         }
-        if (state.audioContext) state.audioContext.resume();
+        if (state.audioContext && state.audioContext.state === 'suspended') {
+            state.audioContext.resume();
+        }
+        updateMicUI();
+        return;
+    }
 
-        updateMicUI(true);
+    // Capture the mode we are ending
+    state.lastFinishedMode = state.micMode;
+
+    // Toggle the active mode
+    state.micMode = (state.micMode === 'INTERVIEWER') ? 'USER' : 'INTERVIEWER';
+    updateMicUI();
+
+    // Trigger chunk processing by stopping the recorder manually.
+    // The onstop event will push the audio blob via processAudioWithPuter,
+    // and instantly restart the recorder because state.isRecording is still true.
+    if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+        state.mediaRecorder.stop();
     }
 }
 
@@ -799,11 +818,7 @@ function updateVadUI(isSpeaking) {
     }
 }
 
-function updateTranscriptUI(finalT, interimT) {
-    // Updates the "Current Input" view (could be a floating bubble or just the feed)
-    // For now we just append to feed but ideally we want to see what is "being typing"
-
-    // We'll use a temporary element at the bottom of feed
+function updateTranscriptUI(finalT, interimT, mode = 'INTERVIEWER') {
     let tempEl = document.getElementById('temp-transcript');
     if (!tempEl) {
         tempEl = document.createElement('p');
@@ -812,25 +827,52 @@ function updateTranscriptUI(finalT, interimT) {
         displays.transcriptFeed.appendChild(tempEl);
     }
 
-    tempEl.innerHTML = `<strong>Inv:</strong> ${finalT} <span style='color:#888'>${interimT}</span>`;
+    const prefix = mode === 'USER' ? 'You' : 'Inv';
+    const strongTag = mode === 'USER' ? `<strong style="color: #64ffda;">${prefix}:</strong>` : `<strong>${prefix}:</strong>`;
+
+    tempEl.innerHTML = `${strongTag} ${finalT} <span style='color:#888'>${interimT}</span>`;
+    if (mode === 'USER') tempEl.classList.add('user-segment');
     scrollToBottom(displays.transcriptFeed);
 
-    // Dynamic UI: Hide Header when transcription starts to save space
     if (finalT || interimT) {
         const trHeader = document.querySelector('.transcript-panel .panel-header');
         if (trHeader) trHeader.style.display = 'none';
     }
 }
 
-function addTranscriptBubble(text) {
+function addTranscriptBubble(text, mode = 'INTERVIEWER') {
     let tempEl = document.getElementById('temp-transcript');
-    if (tempEl) tempEl.remove(); // Remove temp
+    if (tempEl) tempEl.remove();
 
     const p = document.createElement('p');
     p.className = 'transcript-segment final';
-    p.innerHTML = `<strong>Inv:</strong> ${text}`;
+    if (mode === 'USER') p.classList.add('user-segment');
+
+    const prefix = mode === 'USER' ? 'You' : 'Inv';
+    const strongTag = mode === 'USER' ? `<strong style="color: #64ffda;">${prefix}:</strong>` : `<strong>${prefix}:</strong>`;
+
+    p.innerHTML = `${strongTag} ${text}`;
     displays.transcriptFeed.appendChild(p);
     scrollToBottom(displays.transcriptFeed);
+}
+
+function updateMicUI() {
+    if (state.isRecording) {
+        buttons.micToggle.classList.add('active');
+        if (state.micMode === 'INTERVIEWER') {
+            displays.status.innerHTML = "Listening to Interviewer...";
+            buttons.micToggle.style.backgroundColor = "#f44336"; // Red to signify "recording interviewer"
+        } else {
+            displays.status.innerHTML = "Recording Your Answer...";
+            buttons.micToggle.style.backgroundColor = "transparent"; // Grey-like/default look
+            buttons.micToggle.style.border = "2px solid rgba(255,255,255,0.3)";
+        }
+    } else {
+        buttons.micToggle.classList.remove('active');
+        buttons.micToggle.style.backgroundColor = "";
+        buttons.micToggle.style.border = "";
+        displays.status.innerHTML = "Mic Paused";
+    }
 }
 
 function switchScreen(name) {
@@ -870,16 +912,6 @@ function switchScreen(name) {
     }
 }
 
-function updateMicUI(on) {
-    if (on) {
-        buttons.micToggle.classList.add('active');
-        displays.status.textContent = "Listening...";
-    } else {
-        buttons.micToggle.classList.remove('active');
-        displays.status.textContent = "Paused";
-    }
-}
-
 function simulateVisualizerVolume(data) {
     // Calculate RMS
     let sum = 0;
@@ -903,25 +935,52 @@ function parseMarkdown(text) {
 }
 
 function downloadTranscript() {
-    let output = "INTERVIEW Q&A SESSION\n\n";
+    let output = "INTERVIEW Q&A SESSION LOG\n";
+    output += "=========================\n\n";
 
-    state.chatHistory.forEach(msg => {
-        if (msg.role === 'assistant') {
-            let content = msg.content;
-            let question = "Unknown Question";
-            let answer = content;
+    // Combine both logs into one array so we can sort chronologically
+    let combinedLogs = [];
 
-            // Parse [QUESTION: ...]
-            const qMatch = content.match(/^\[QUESTION:\s*(.*?)\]/s);
-            if (qMatch) {
-                question = qMatch[1].trim();
-                answer = content.substring(qMatch[0].length).trim();
-            }
+    state.transcriptLog.forEach(entry => {
+        combinedLogs.push({
+            time: entry.timestamp,
+            speaker: (entry.mode === 'USER') ? "YOU" : "INTERVIEWER",
+            text: entry.text,
+            type: 'speech'
+        });
+    });
 
-            output += `QUESTION: ${question}\n`;
-            output += `ANSWER: ${answer}\n`;
-            output += "--------------------------------------------------\n\n";
+    state.aiLog.forEach(entry => {
+        // Strip the [QUESTION: ...] wrapper if it exists for cleaner reading
+        let cleanText = entry.text;
+        const qMatch = cleanText.match(/^\[QUESTION:\s*(.*?)\]/s);
+        if (qMatch) {
+            cleanText = cleanText.substring(qMatch[0].length).trim();
         }
+
+        combinedLogs.push({
+            time: entry.timestamp,
+            speaker: "AI ASSISTANT",
+            text: cleanText,
+            type: 'ai'
+        });
+    });
+
+    // Sort by timestamp string (This relies on toLocaleTimeString being sortable, 
+    // but since they are generated sequentially in a session, their array index order + time works fine.
+    // For safer parsing we rely on the fact they were inserted sequentially anyway).
+    // A simpler approach: Just sort by string comparison of timestamp or assume pushing order is close enough.
+    // To be perfectly safe, since they might be pushed out of exact ms order, we'll sort.
+    combinedLogs.sort((a, b) => {
+        // Create dummy dates to parse the times correctly
+        const timeA = new Date('1970/01/01 ' + a.time);
+        const timeB = new Date('1970/01/01 ' + b.time);
+        return timeA - timeB;
+    });
+
+    combinedLogs.forEach(entry => {
+        output += `[${entry.time}] ${entry.speaker}:\n`;
+        output += `${entry.text}\n\n`;
     });
 
     const blob = new Blob([output], { type: 'text/plain' });
