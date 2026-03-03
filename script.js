@@ -1046,6 +1046,68 @@ function endSession() {
             });
         } catch (e) { }
     }
+
+    // Auto-Upload Transcript to Google Drive
+    if (state.transcriptLog.length > 0) {
+        showToast("Uploading session transcript to Google Drive...", 4000);
+
+        // 1. Compile the Document exactly like the download file
+        let output = "INTERVIEW Q&A SESSION LOG\n";
+        output += "=========================\n\n";
+
+        let combinedLogs = [];
+        state.transcriptLog.forEach(entry => {
+            combinedLogs.push({
+                time: entry.timestamp,
+                speaker: (entry.mode === 'USER') ? "YOU" : "INTERVIEWER",
+                text: entry.text
+            });
+        });
+        state.aiLog.forEach(entry => {
+            let cleanText = entry.text;
+            const qMatch = cleanText.match(/^\[QUESTION:\s*(.*?)\]/s);
+            if (qMatch) cleanText = cleanText.substring(qMatch[0].length).trim();
+            combinedLogs.push({ time: entry.timestamp, speaker: "AI ASSISTANT", text: cleanText });
+        });
+
+        combinedLogs.sort((a, b) => {
+            return new Date('1970/01/01 ' + a.time) - new Date('1970/01/01 ' + b.time);
+        });
+
+        combinedLogs.forEach(entry => {
+            output += `[${entry.time}] ${entry.speaker}:\n${entry.text}\n\n`;
+        });
+
+        // 2. Send to Backend
+        try {
+            const params = new URLSearchParams();
+            params.append('action', 'uploadTranscript');
+            params.append('email', state.currentUser ? state.currentUser.email : "guest");
+            params.append('topic', state.topic || "Untitled Session");
+            params.append('transcript', output);
+
+            fetch(GOOGLE_URL, {
+                method: 'POST',
+                body: params,
+                redirect: 'follow'
+            }).then(response => response.text())
+                .then(text => {
+                    try {
+                        const data = JSON.parse(text);
+                        if (data.status === 'success') {
+                            showToast("Transcript securely saved to Google Drive!");
+                            console.log("Drive URL:", data.url);
+                        } else {
+                            console.error("Upload error response:", data.message);
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse upload response", text);
+                    }
+                });
+        } catch (err) {
+            console.error("Error initiating transcript upload", err);
+        }
+    }
 }
 
 function isSelfLoop(userText, lastAiText) {

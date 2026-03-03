@@ -177,6 +177,49 @@ function handleRequest(params) {
             }
         }
 
+        // --- ACTION: UPLOAD TRANSCRIPT ---
+        else if (action === 'uploadTranscript') {
+            const email = params.email ? params.email.trim().toLowerCase() : "unknown@email.com";
+            const topic = params.topic || "Untitled Session";
+            const transcriptText = params.transcript || "";
+
+            if (!transcriptText) {
+                return createJsonResponse({ status: 'error', message: 'No transcript text provided.' });
+            }
+
+            // 1. Create the File in Google Drive
+            // We use the root folder by default, but you could specify a folder ID
+            const dateStr = new Date().toLocaleDateString();
+            const fileName = `${dateStr} - ${topic} Transcript.txt`;
+
+            const file = DriveApp.createFile(fileName, transcriptText, MimeType.PLAIN_TEXT);
+            const fileUrl = file.getUrl();
+
+            // Optional: Make it viewable by anyone with the link
+            // file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+            // 2. Add a record to the "Transcripts" sheet
+            let transcriptSheet = ss.getSheetByName("Transcripts");
+            if (!transcriptSheet) {
+                // Auto-create the sheet if it doesn't exist
+                transcriptSheet = ss.insertSheet("Transcripts");
+                transcriptSheet.appendRow(["Email", "Date", "Topic", "Document URL"]);
+                // Bold the headers
+                transcriptSheet.getRange("A1:D1").setFontWeight("bold");
+            }
+
+            transcriptSheet.appendRow([
+                email,
+                new Date().toISOString(),
+                topic,
+                fileUrl
+            ]);
+
+            response.status = 'success';
+            response.message = 'Transcript securely saved to Google Drive.';
+            response.url = fileUrl;
+        }
+
     } catch (err) {
         response.status = 'error';
         response.message = 'Script Error: ' + err.toString();
