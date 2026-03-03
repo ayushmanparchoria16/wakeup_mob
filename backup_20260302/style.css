@@ -135,66 +135,11 @@ body {
     z-index: 20;
 }
 
-/* Auth & Setup Screens */
-#auth-screen,
+/* Setup Screen */
 #setup-screen {
     justify-content: center;
     align-items: center;
     padding: 20px;
-}
-
-.auth-tabs {
-    display: flex;
-    margin-bottom: 20px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 8px;
-    padding: 4px;
-}
-
-.auth-tab {
-    flex: 1;
-    background: transparent;
-    color: var(--text-muted);
-    border: none;
-    padding: 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    font-weight: 500;
-    transition: all 0.3s;
-}
-
-.auth-tab.active {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.btn-loading {
-    position: relative;
-    pointer-events: none;
-    color: transparent !important;
-}
-
-.btn-loading::after {
-    content: '';
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    border: 2px solid transparent;
-    border-top-color: #fff;
-    border-right-color: #fff;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-}
-
-@keyframes spin {
-    to {
-        transform: translate(-50%, -50%) rotate(360deg);
-    }
 }
 
 .glass-card {
@@ -216,7 +161,6 @@ body {
     margin-bottom: 5px;
     background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
     -webkit-background-clip: text;
-    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 

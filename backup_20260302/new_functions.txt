@@ -1,0 +1,50 @@
+InterviewHammer Technical Analysis Report
+1. Executive Summary
+InterviewHammer is a hybrid desktop application designed to provide real-time assistance during job interviews. It consists of an Electron wrapper (for desktop operating system integration) and a Flutter Web frontend (for the UI and application logic).
+
+The application employs a Hybrid AI Architecture:
+
+Edge/Local AI: Runs locally on your machine for low-latency Voice Activity Detection (VAD).
+Cloud AI: Offloads heavy processing (Speech-to-Text and Question Understanding) to a remote server.
+2. Capability Breakdown & Logic
+A. Voice Activity Detection (Local AI)
+The app uses Silero VAD, a pre-trained enterprise-grade Voice Activity Detection model, running locally in the browser via WebAssembly.
+
+Model File: assets/assets/models/sileroVad/silero_vad.onnx (Bundled in the app).
+Runtime: ONNX Runtime Web (
+ort-wasm.wasm
+), which allows running machine learning models efficiently in the browser/electron environment.
+Mechanism:
+Audio Capture: The app captures your microphone input in real-time.
+Chunking: Audio is split into small frames (likely 30ms or roughly 500-1500 samples).
+Inference: The 
+silero_vad_worker.js
+ feeds these frames to the .onnx model.
+Output: The model outputs a probability (0.0 to 1.0) indicating if "speech" is present.
+Logic: If probability > threshold (e.g., 0.5), it marks the frame as "speech". Continuous speech frames are bundled and sent to the API.
+Why Local?: This ensures the app only records and sends data when you are actually talking, saving bandwidth and improving privacy.
+B. Question Detection & Robustness (Cloud AI)
+The user asked: "How is it detecting expected questions even when the transcript is improper?"
+
+Since no large Language Model (LLM) or Speech-to-Text (STT) model exists locally (the entire resources/web defines no such assets), this logic must primarily reside on the server.
+
+The Workflow:
+Speech Upload: The valid speech chunks (filtered by VAD) are sent to the backend.
+Server-Side ASR: The server converts audio to text (using models like Whisper, Deepgram, or similar).
+LLM Correction Layer: The raw transcript is often imperfect (e.g., "Tell me about see sharp" vs "Tell me about C#").
+Contextual Inference: The transcript is fed to an LLM (likely OpenAI GPT-4 or similar) with a specific System Prompt.
+The Logic of Robustness
+The "improper transcript" handling is a classic LLM capabilities feature. The system prompt likely looks like this:
+
+"You are an interview assistant. I will provide a transcript of an interview. It may contain errors, typos, or missed words due to audio quality. Your task is to extract the core interview question being asked. Ignore small talk or filler words. If the transcript is unclear, infer the most likely technical question based on the context."
+
+Evidence: The presence of gpt_markdown in the assets strongly suggests the app receives Markdown-formatted text (typical of LLM APIs) and renders it for the user.
+3. Key Files Identified
+File Path	Purpose
+resources/web/scripts/silero_vad_worker.js	Worker thread that loads ONNX and runs audio inference.
+resources/web/assets/assets/models/sileroVad/silero_vad.onnx	The actual AI model file for voice detection.
+resources/web/scripts/ort-wasm.wasm	The runtime engine (ONNX Runtime) to execute the model.
+resources/web/main.dart.js	The compiled application logic (Flutter).
+resources/web/assets/AssetManifest.bin.json	Inventory of all bundled assets, confirming no other local models exist.
+4. Conclusion
+"InterviewHammer" is a sophisticated wrapper. The "smarts" of understanding your interview questions—especially correcting bad transcripts—are powered by Cloud LLMs, which are naturally good at fuzzy matching and context correction. The Local VAD ensures efficiency by acting as a smart gatekeeper for the audio stream.

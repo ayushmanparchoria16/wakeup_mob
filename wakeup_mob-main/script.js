@@ -34,25 +34,16 @@ const state = {
     lastAiCallTime: 0,
 
     transcriptAccumulator: "",
-    currentUser: null,
 };
 
 // --- DOM Elements ---
 const screens = {
-    auth: document.getElementById('auth-screen'),
-    setup: document.getElementById('setup-screen'),
     meeting: document.getElementById('meeting-screen'),
     end: document.getElementById('end-screen')
 };
 
 const inputs = {
-    topic: document.getElementById('topic-input'),
-    loginEmail: document.getElementById('login-email'),
-    loginPass: document.getElementById('login-password'),
-    regName: document.getElementById('register-name'),
-    regEmail: document.getElementById('register-email'),
-    regPass: document.getElementById('register-password'),
-    forgotEmail: document.getElementById('forgot-email')
+    topic: document.getElementById('topic-input')
 };
 
 const buttons = {
@@ -61,21 +52,11 @@ const buttons = {
     endMeeting: document.getElementById('end-session-btn'),
     micToggle: document.getElementById('mic-toggle-btn'),
     download: document.getElementById('download-btn'),
-    clearExit: document.getElementById('clear-exit-btn'),
-    // Auth buttons
-    tabLogin: document.getElementById('tab-login'),
-    tabReg: document.getElementById('tab-register'),
-    login: document.getElementById('login-btn'),
-    register: document.getElementById('register-btn'),
-    forgotLink: document.getElementById('forgot-password-link'),
-    forgotSubmit: document.getElementById('forgot-btn'),
-    backLogin: document.getElementById('back-to-login-btn'),
-    logout: document.getElementById('logout-link')
+    clearExit: document.getElementById('clear-exit-btn')
 };
 
 const displays = {
     topic: document.getElementById('display-topic'),
-    userName: document.getElementById('user-display-name'),
     transcriptFeed: document.getElementById('transcript-feed'),
     aiFeed: document.getElementById('ai-feed'),
     status: document.getElementById('status-text'),
@@ -83,31 +64,12 @@ const displays = {
     visualizerBars: document.querySelectorAll('.bar'),
     statWords: document.getElementById('stat-words'),
     statInsights: document.getElementById('stat-insights'),
-    toast: document.getElementById('toast'),
-    // Forms
-    loginForm: document.getElementById('login-form'),
-    regForm: document.getElementById('register-form'),
-    forgotForm: document.getElementById('forgot-form')
+    toast: document.getElementById('toast')
 };
 
 // --- Initialization ---
 
 function init() {
-    // Check local storage for user
-    const savedUser = localStorage.getItem('wakeup_user');
-    if (savedUser) {
-        try {
-            state.currentUser = JSON.parse(savedUser);
-            displays.userName.textContent = state.currentUser.displayName || state.currentUser.email.split('@')[0];
-            switchScreen('setup');
-        } catch (e) {
-            console.error("Failed to parse user", e);
-            switchScreen('auth');
-        }
-    } else {
-        switchScreen('auth');
-    }
-
     // Check protocol
     if (window.location.protocol === 'file:') {
         showToast("⚠️ Run via Local Server to save permissions!");
@@ -121,224 +83,13 @@ function init() {
     buttons.download.addEventListener('click', downloadTranscript);
     buttons.clearExit.addEventListener('click', clearAndExit);
 
-    // Auth Listeners
-    setupAuthListeners();
-
     // Spacebar to toggle mic
     document.addEventListener('keydown', (e) => {
-        if (e.code === 'Space' && e.target.tagName !== 'INPUT' && screens.meeting.classList.contains('active')) {
+        if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
             e.preventDefault();
             toggleMic();
         }
     });
-}
-
-// --- Auth Logic ---
-function setupAuthListeners() {
-    // Tabs
-    buttons.tabLogin.addEventListener('click', () => {
-        buttons.tabLogin.classList.add('active');
-        buttons.tabReg.classList.remove('active');
-        displays.loginForm.classList.remove('hidden');
-        displays.regForm.classList.add('hidden');
-        displays.forgotForm.classList.add('hidden');
-    });
-
-    buttons.tabReg.addEventListener('click', () => {
-        buttons.tabReg.classList.add('active');
-        buttons.tabLogin.classList.remove('active');
-        displays.regForm.classList.remove('hidden');
-        displays.loginForm.classList.add('hidden');
-        displays.forgotForm.classList.add('hidden');
-    });
-
-    // Forgot Password Flow
-    buttons.forgotLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        displays.loginForm.classList.add('hidden');
-        displays.forgotForm.classList.remove('hidden');
-        buttons.tabLogin.classList.remove('active');
-        buttons.tabReg.classList.remove('active');
-    });
-
-    buttons.backLogin.addEventListener('click', () => {
-        displays.forgotForm.classList.add('hidden');
-        displays.loginForm.classList.remove('hidden');
-        buttons.tabLogin.classList.add('active');
-    });
-
-    // Submit Actions
-    buttons.login.addEventListener('click', handleLogin);
-    buttons.register.addEventListener('click', handleRegister);
-    buttons.logout.addEventListener('click', (e) => {
-        e.preventDefault();
-        handleLogout();
-    });
-    buttons.forgotSubmit.addEventListener('click', handleForgotPassword);
-}
-
-async function handleLogin() {
-    const email = inputs.loginEmail.value.trim();
-    const pass = inputs.loginPass.value;
-
-    if (!email || !pass) return showToast("Please enter email and password");
-
-    setLoading(buttons.login, true);
-
-    try {
-        const params = new URLSearchParams();
-        params.append('action', 'login');
-        params.append('email', email);
-        params.append('password', pass);
-
-        const res = await fetch(GOOGLE_URL, {
-            method: 'POST',
-            body: params,
-            redirect: 'follow'
-        });
-
-        const textData = await res.text();
-        let data;
-        try {
-            data = JSON.parse(textData);
-        } catch (e) {
-            console.error("Raw response:", textData);
-            throw new Error("Invalid JSON response from server");
-        }
-
-        if (data.status === 'success') {
-            state.currentUser = data.user;
-            localStorage.setItem('wakeup_user', JSON.stringify(data.user));
-            displays.userName.textContent = data.user.displayName;
-            switchScreen('setup');
-            showToast("Login successful!");
-        } else {
-            showToast(data.message || "Login failed");
-        }
-    } catch (err) {
-        showToast("Error connecting to server");
-        console.error(err);
-    } finally {
-        setLoading(buttons.login, false);
-    }
-}
-
-async function handleRegister() {
-    const name = inputs.regName.value.trim();
-    const email = inputs.regEmail.value.trim();
-    const pass = inputs.regPass.value;
-
-    if (!email || !pass) return showToast("Email and password required");
-
-    setLoading(buttons.register, true);
-
-    try {
-        const params = new URLSearchParams();
-        params.append('action', 'register');
-        params.append('email', email);
-        params.append('password', pass);
-        params.append('displayName', name || email.split('@')[0]);
-
-        const res = await fetch(GOOGLE_URL, {
-            method: 'POST',
-            body: params,
-            redirect: 'follow'
-        });
-
-        const textData = await res.text();
-        let data;
-        try {
-            data = JSON.parse(textData);
-        } catch (e) {
-            console.error("Raw response:", textData);
-            throw new Error("Invalid JSON response from server");
-        }
-
-        if (data.status === 'success') {
-            showToast("Registration successful! Please login.");
-            buttons.tabLogin.click(); // Switch to login tab
-            inputs.loginEmail.value = email; // Pre-fill email
-        } else {
-            showToast(data.message || "Registration failed");
-        }
-    } catch (err) {
-        showToast("Error connecting to server");
-        console.error(err);
-    } finally {
-        setLoading(buttons.register, false);
-    }
-}
-
-async function handleForgotPassword() {
-    const email = inputs.forgotEmail.value.trim();
-    if (!email) return showToast("Please enter your email");
-
-    setLoading(buttons.forgotSubmit, true);
-
-    try {
-        const params = new URLSearchParams();
-        params.append('action', 'forgotPassword');
-        params.append('email', email);
-
-        const res = await fetch(GOOGLE_URL, {
-            method: 'POST',
-            body: params,
-            redirect: 'follow'
-        });
-
-        const textData = await res.text();
-        let data;
-        try {
-            data = JSON.parse(textData);
-        } catch (e) {
-            console.error("Raw response:", textData);
-            throw new Error("Invalid JSON response from server");
-        }
-
-        if (data.status === 'success') {
-            showToast(data.message || "A temporary password was sent.", 4000);
-            buttons.backLogin.click();
-        } else {
-            // Still show a generic message for security if desired, or error.
-            showToast(data.message || "If this email exists, a reset link was sent.", 4000);
-            buttons.backLogin.click();
-        }
-    } catch (err) {
-        showToast("Error connecting to server");
-        console.error(err);
-    } finally {
-        setLoading(buttons.forgotSubmit, false);
-    }
-}
-
-async function handleLogout() {
-    if (state.currentUser) {
-        try {
-            const params = new URLSearchParams();
-            params.append('action', 'logout');
-            params.append('email', state.currentUser.email);
-
-            await fetch(GOOGLE_URL, {
-                method: 'POST',
-                body: params,
-                redirect: 'follow'
-            });
-        } catch (e) { }
-    }
-
-    state.currentUser = null;
-    localStorage.removeItem('wakeup_user');
-    inputs.topic.value = '';
-    switchScreen('auth');
-    showToast("Logged out successfully");
-}
-
-function setLoading(btn, isLoading) {
-    if (isLoading) {
-        btn.classList.add('btn-loading');
-    } else {
-        btn.classList.remove('btn-loading');
-    }
 }
 
 // --- Audio & VAD Setup ---
@@ -449,13 +200,15 @@ function startSilenceDetectionLoop() {
                 if (state.silenceStartTime === 0) {
                     state.silenceStartTime = Date.now();
                 } else if (Date.now() - state.silenceStartTime > CONFIG.SILENCE_DELAY_MS) {
-                    // Silence has lasted long enough, update UI
+                    // Silence has lasted long enough, trigger cutoff
                     state.isSpeaking = false;
                     updateVadUI(false);
                     state.silenceStartTime = 0;
 
-                    // We no longer auto-stop the recorder on silence.
-                    // The user must manually toggle the mic to submit the recording.
+                    // Stop the recorder. The `onstop` event will trigger Puter formatting.
+                    if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+                        state.mediaRecorder.stop();
+                    }
                 }
             }
         }
@@ -512,12 +265,6 @@ async function processAudioWithPuter(audioBlob) {
 // --- Main Session Logic ---
 
 async function startSession() {
-    if (!state.currentUser) {
-        showToast("Please login first.");
-        switchScreen('auth');
-        return;
-    }
-
     const topic = inputs.topic.value.trim();
     if (!topic) {
         showToast("Please enter a meeting topic.");
@@ -663,6 +410,11 @@ async function streamAIResponse(element) {
         2. **FIRST STEP**: decoding the question. Output it in this format:
            [QUESTION: Your understanding of the question?]
         3. **SECOND STEP**: Answer directly. Do not repeat the question or say "I understood this". Just start the answer.
+           
+        CRITICAL: LOOP DETECTION
+        - If the INPUT text is simply a reading (or paraphrasing) of your LAST output, DO NOT generate a new answer.
+        - Output exactly: [IGNORE]
+        - **EXCEPTION**: If there is no previous conversation history (first message), NEVER ignore. Answer it.
         
         ANSWERING RULES:
         1. Start with [QUESTION: ...].
@@ -692,6 +444,13 @@ async function streamAIResponse(element) {
             const text = part?.text || "";
             if (text) {
                 finalOutput += text;
+
+                // Check for IGNORE tag early
+                if (finalOutput.startsWith("[IGNORE]")) {
+                    element.innerHTML = "<em>(Reading detected - ignored)</em>";
+                    element.style.opacity = "0.5";
+                    continue;
+                }
 
                 // Check for QUESTION tag
                 const qMatch = finalOutput.match(/^\[QUESTION:\s*(.*?)\]/s);
@@ -738,6 +497,13 @@ async function streamAIResponse(element) {
 
                 element.innerHTML = htmlContent;
             }
+        }
+
+        if (finalOutput.includes("[IGNORE]")) {
+            setTimeout(() => {
+                if (element.parentNode) element.remove();
+            }, 2000);
+            return null; // Don't save to history
         }
 
         return finalOutput;
@@ -966,27 +732,8 @@ function endSession() {
     if (trHeader) trHeader.style.display = 'flex';
 
     // Populate stats (basic for now)
-    const totalWords = state.transcriptLog.reduce((acc, l) => acc + l.text.split(' ').length, 0);
-    displays.statWords.textContent = totalWords + " words";
+    displays.statWords.textContent = state.transcriptLog.reduce((acc, l) => acc + l.text.split(' ').length, 0) + " words";
     displays.statInsights.textContent = state.aiLog.length + " generated";
-
-    // Auto-update usage in backend
-    if (state.currentUser && totalWords > 0) {
-        // Assume roughly 150 words per minute
-        const estMinutes = Math.max(1, (totalWords / 150)).toFixed(1);
-        try {
-            const params = new URLSearchParams();
-            params.append('action', 'updateUsage');
-            params.append('email', state.currentUser.email);
-            params.append('minutes', estMinutes);
-
-            fetch(GOOGLE_URL, {
-                method: 'POST',
-                body: params,
-                redirect: 'follow'
-            });
-        } catch (e) { }
-    }
 }
 
 function isSelfLoop(userText, lastAiText) {
