@@ -1181,7 +1181,62 @@ function showToast(msg, duration = 3000) {
 
 window.addEventListener('load', init);
 
+// --- Feedback Logic ---
+let currentRating = 0;
 
+document.querySelectorAll('.star').forEach(star => {
+    star.addEventListener('click', (e) => {
+        currentRating = parseInt(e.target.dataset.value);
+        document.querySelectorAll('.star').forEach(s => {
+            const val = parseInt(s.dataset.value);
+            s.textContent = val <= currentRating ? 'star' : 'star_outline';
+            if (val <= currentRating) {
+                s.style.color = '#FFD700';
+            } else {
+                s.style.color = '';
+            }
+        });
+    });
+});
 
+document.addEventListener('DOMContentLoaded', () => {
+    const submitBtn = document.getElementById('submit-feedback-btn');
+    if (submitBtn) {
+        submitBtn.addEventListener('click', async (e) => {
+            const btn = e.target;
+            const comment = document.getElementById('feedback-comment').value.trim();
+            if (currentRating === 0 && !comment) {
+                showToast("Please provide a rating or a comment");
+                return;
+            }
+            setLoading(btn, true);
+            try {
+                const params = new URLSearchParams();
+                params.append('action', 'submitFeedback');
+                params.append('email', state.currentUser ? state.currentUser.email : 'guest');
+                params.append('topic', state.topic || 'Untitled Session');
+                params.append('rating', currentRating);
+                params.append('comment', comment);
 
-
+                const res = await fetch(GOOGLE_URL, {
+                    method: 'POST',
+                    body: params,
+                    redirect: 'follow'
+                });
+                const textData = await res.text();
+                const data = JSON.parse(textData);
+                if (data.status === 'success') {
+                    showToast("Feedback submitted successfully.");
+                    document.getElementById('feedback-section').innerHTML = "<p style='color: var(--success); text-align: center; padding: 20px 0;'>Thank you for your feedback!</p>";
+                } else {
+                    showToast("Failed to submit feedback: " + data.message);
+                }
+            } catch (err) {
+                showToast("Error submitting feedback.");
+                console.error(err);
+            } finally {
+                setLoading(btn, false);
+            }
+        });
+    }
+});

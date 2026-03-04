@@ -228,6 +228,32 @@ function handleRequest(params) {
             response.url = fileUrl;
         }
 
+        // --- ACTION: SUBMIT FEEDBACK ---
+        else if (action === 'submitFeedback') {
+            const email = params.email || "guest";
+            const topic = params.topic || "Untitled Session";
+            const rating = params.rating || 0;
+            const comment = params.comment || "";
+
+            let feedbackSheet = ss.getSheetByName("Feedback");
+            if (!feedbackSheet) {
+                feedbackSheet = ss.insertSheet("Feedback");
+                feedbackSheet.appendRow(["Email", "Topic", "Date", "Rating", "Comment"]);
+                feedbackSheet.getRange("A1:E1").setFontWeight("bold");
+            }
+
+            feedbackSheet.appendRow([
+                email,
+                topic,
+                new Date().toISOString(),
+                rating,
+                comment
+            ]);
+
+            response.status = 'success';
+            response.message = 'Feedback saved.';
+        }
+
     } catch (err) {
         response.status = 'error';
         response.message = 'Script Error: ' + err.toString();
