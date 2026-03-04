@@ -505,6 +505,11 @@ async function processAudioWithPuter(audioBlob, mode) {
         }
 
     } catch (err) {
+        if (!state.isRecording) {
+            console.log("Transcription aborted due to session end.");
+            return;
+        }
+
         console.error("Transcription Failed:", err);
         showToast("Transcription error: " + err.message);
 
@@ -1049,7 +1054,7 @@ function endSession() {
 
     // Auto-Upload Transcript to Google Drive
     if (state.transcriptLog.length > 0) {
-        showToast("Uploading session transcript to Google Drive...", 4000);
+        showToast("Saving session transcript securely...", 4000);
 
         // 1. Compile the Document exactly like the download file
         let output = "INTERVIEW Q&A SESSION LOG\n";
@@ -1095,7 +1100,7 @@ function endSession() {
                     try {
                         const data = JSON.parse(text);
                         if (data.status === 'success') {
-                            showToast("Transcript securely saved to Google Drive!");
+                            showToast("Transcript saved securely!");
                             console.log("Drive URL:", data.url);
                         } else {
                             console.error("Upload error response:", data.message);

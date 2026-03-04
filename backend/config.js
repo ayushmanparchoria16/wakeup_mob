@@ -224,7 +224,7 @@ function handleRequest(params) {
             ]);
 
             response.status = 'success';
-            response.message = 'Transcript securely saved to Google Drive.';
+            response.message = 'Transcript securely saved.';
             response.url = fileUrl;
         }
 
