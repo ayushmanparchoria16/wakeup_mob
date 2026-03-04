@@ -74,7 +74,8 @@ const buttons = {
     forgotLink: document.getElementById('forgot-password-link'),
     forgotSubmit: document.getElementById('forgot-btn'),
     backLogin: document.getElementById('back-to-login-btn'),
-    logout: document.getElementById('logout-link')
+    logout: document.getElementById('logout-link'),
+    switchAccount: document.getElementById('switch-account-link')
 };
 
 const displays = {
@@ -128,6 +129,43 @@ function init() {
 
     // Auth Listeners
     setupAuthListeners();
+
+    if (buttons.switchAccount) {
+        buttons.switchAccount.addEventListener('click', async (e) => {
+            e.preventDefault();
+            showToast("Clearing AI Account data...", 2000);
+
+            try {
+                if (puter.auth.isSignedIn()) {
+                    puter.auth.signOut();
+                }
+            } catch (err) {
+                console.warn("Puter signout failed:", err);
+            }
+
+            // Aggressively clear local and session storage
+            const savedUser = localStorage.getItem('wakeup_user');
+            localStorage.clear();
+            sessionStorage.clear();
+
+            // Restore our user
+            if (savedUser) {
+                localStorage.setItem('wakeup_user', savedUser);
+            }
+
+            // Clear all cookies
+            document.cookie.split(";").forEach((c) => {
+                document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+            });
+
+            setTimeout(() => {
+                showToast("Account data cleared. Please start a session to login again.", 3000);
+                setTimeout(() => {
+                    window.location.reload(true);
+                }, 1500);
+            }, 1000);
+        });
+    }
 
     // Spacebar to toggle mic
     document.addEventListener('keydown', (e) => {
@@ -317,6 +355,10 @@ async function handleForgotPassword() {
 }
 
 async function handleLogout() {
+    if (puter.auth.isSignedIn()) {
+        puter.auth.signOut();
+    }
+
     if (state.currentUser) {
         try {
             const params = new URLSearchParams();
