@@ -614,15 +614,12 @@ input:focus {
 }
 
 .controls {
-    height: 90px;
-    display: flex;
-    height: 90px;
+    height: 100px;
     display: flex;
     flex-direction: row;
-    /* Changed to row */
     justify-content: center;
     align-items: center;
-    gap: 20px;
+    gap: 32px;
     background: rgba(9, 9, 11, 0.9);
     border-top: var(--glass-border);
     flex-shrink: 0;
@@ -632,8 +629,8 @@ input:focus {
 }
 
 .fab-mini {
-    width: 48px;
-    height: 48px;
+    width: 60px;
+    height: 60px;
     border-radius: 50%;
     border: none;
     background: rgba(255, 255, 255, 0.1);
@@ -654,7 +651,7 @@ input:focus {
 }
 
 .fab-mini .material-icons-round {
-    font-size: 24px;
+    font-size: 30px;
 }
 
 .status-overlay {
@@ -669,8 +666,8 @@ input:focus {
 }
 
 .fab {
-    width: 64px;
-    height: 64px;
+    width: 76px;
+    height: 76px;
     border-radius: 50%;
     border: none;
     background: var(--primary);
@@ -683,7 +680,7 @@ input:focus {
 }
 
 .fab .material-icons-round {
-    font-size: 32px;
+    font-size: 38px;
 }
 
 .fab.active {
@@ -861,12 +858,17 @@ input:focus {
     }
 
     .controls {
-        height: 80px;
+        height: 90px;
     }
 
     .fab {
-        width: 56px;
-        height: 56px;
+        width: 64px;
+        height: 64px;
+    }
+
+    .fab-mini {
+        width: 50px;
+        height: 50px;
     }
 }
 

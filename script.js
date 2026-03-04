@@ -63,6 +63,7 @@ const buttons = {
     quickReplyMeeting: document.getElementById('quick-reply-meeting-btn'),
     endMeeting: document.getElementById('end-session-btn'),
     micToggle: document.getElementById('mic-toggle-btn'),
+    screenshot: document.getElementById('screenshot-btn'),
     download: document.getElementById('download-btn'),
     clearExit: document.getElementById('clear-exit-btn'),
     // Auth buttons
@@ -121,6 +122,7 @@ function init() {
     if (buttons.quickReplyMeeting) buttons.quickReplyMeeting.addEventListener('click', quickReply);
     buttons.endMeeting.addEventListener('click', endSession);
     buttons.micToggle.addEventListener('click', toggleMic);
+    if (buttons.screenshot) buttons.screenshot.addEventListener('click', captureScreenshotAndSolve);
     buttons.download.addEventListener('click', downloadTranscript);
     buttons.clearExit.addEventListener('click', clearAndExit);
 
@@ -760,6 +762,113 @@ async function streamAIResponse(element) {
         console.error("AI Error:", err);
         element.innerHTML = "<span style='color:red'>AI Error</span>";
         return null;
+    }
+}
+
+async function captureScreenshotAndSolve() {
+    if (state.isProcessingAI) {
+        showToast("Wait for AI to finish thinking...");
+        return;
+    }
+
+    try {
+        showToast("Select screen/window to capture...", 4000);
+        // Request screen capture
+        const captureStream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+                displaySurface: "window"
+            },
+            audio: false
+        });
+
+        // Create a video element to play the stream
+        const video = document.createElement('video');
+        video.srcObject = captureStream;
+        video.play();
+
+        // Wait for video to load metadata
+        await new Promise((resolve) => {
+            video.onloadedmetadata = () => {
+                resolve();
+            };
+        });
+
+        // Wait a tiny bit more for the first frame to render properly
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Create canvas and draw the frame
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Stop the capture stream immediately after grabbing frame
+        captureStream.getTracks().forEach(track => track.stop());
+
+        // Get Data URL
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+        // Show AI is thinking
+        state.isProcessingAI = true;
+        const aiMessageId = `ai-msg-${Date.now()}`;
+        const aiContainer = document.createElement('div');
+        aiContainer.className = 'ai-message';
+        aiContainer.id = aiMessageId;
+        aiContainer.innerHTML = "<em>Analyzing screen image...</em>";
+        displays.aiFeed.appendChild(aiContainer);
+
+        // Scroll
+        scrollToBottom(displays.aiFeed);
+
+        // Prepare message for Puter AI Vision
+        const visionPrompt = "Analyze this image from a technical interview or problem. It contains a question or code. Act as an expert candidate, extract the problem, and provide a clear, concise step-by-step solution.";
+
+        state.chatHistory.push({ role: "user", content: "[User sent a screenshot]" });
+
+        const messages = [
+            {
+                role: "system",
+                content: `You are an expert technical candidate. You will be given an image. Read the text, understand the problem, and output the solution in Markdown. Keep it strictly focused on solving the problem shown.`
+            },
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: visionPrompt },
+                    { type: "image_url", image_url: { url: dataUrl } }
+                ]
+            }
+        ];
+
+        // Send to Puter API
+        const response = await puter.ai.chat(messages, {
+            model: 'gpt-4o-mini'
+        });
+
+        // Handle response (Assuming unary response for vision for simplicity, or stream if supported)
+        let finalOutput = "";
+        if (response && response.message && response.message.content) {
+            finalOutput = response.message.content;
+        } else if (typeof response === "string") {
+            finalOutput = response;
+        } else {
+            finalOutput = response?.text || "Could not analyze the image.";
+        }
+
+        aiContainer.innerHTML = parseMarkdown(finalOutput);
+
+        state.chatHistory.push({ role: "assistant", content: finalOutput });
+        state.aiLog.push({ timestamp: new Date().toLocaleTimeString(), text: finalOutput });
+
+    } catch (err) {
+        console.error("Screenshot Capture Failed:", err);
+        if (err.name === 'NotAllowedError') {
+            showToast("Screen capture cancelled.");
+        } else {
+            showToast("Screenshot capture failed.");
+        }
+    } finally {
+        state.isProcessingAI = false;
     }
 }
 
