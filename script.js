@@ -807,49 +807,14 @@ async function streamAIResponse(element) {
     }
 }
 
-async function captureScreenshotAndSolve() {
+window.receiveDesktopScreenshot = async function (dataUrl) {
     if (state.isProcessingAI) {
         showToast("Wait for AI to finish thinking...");
         return;
     }
 
     try {
-        showToast("Select screen/window to capture...", 4000);
-        // Request screen capture
-        const captureStream = await navigator.mediaDevices.getDisplayMedia({
-            video: {
-                displaySurface: "window"
-            },
-            audio: false
-        });
-
-        // Create a video element to play the stream
-        const video = document.createElement('video');
-        video.srcObject = captureStream;
-        video.play();
-
-        // Wait for video to load metadata
-        await new Promise((resolve) => {
-            video.onloadedmetadata = () => {
-                resolve();
-            };
-        });
-
-        // Wait a tiny bit more for the first frame to render properly
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // Create canvas and draw the frame
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        // Stop the capture stream immediately after grabbing frame
-        captureStream.getTracks().forEach(track => track.stop());
-
-        // Get Data URL
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        if (!dataUrl) throw new Error("No image data received from wrapper.");
 
         // Show AI is thinking
         state.isProcessingAI = true;
@@ -903,16 +868,12 @@ async function captureScreenshotAndSolve() {
         state.aiLog.push({ timestamp: new Date().toLocaleTimeString(), text: finalOutput });
 
     } catch (err) {
-        console.error("Screenshot Capture Failed:", err);
-        if (err.name === 'NotAllowedError') {
-            showToast("Screen capture cancelled.");
-        } else {
-            showToast("Screenshot capture failed.");
-        }
+        console.error("Screenshot Analysis Failed:", err);
+        showToast("Screenshot capture or analysis failed.");
     } finally {
         state.isProcessingAI = false;
     }
-}
+};
 
 async function quickReply() {
     // Use whatever is in accumulator OR last transcript
