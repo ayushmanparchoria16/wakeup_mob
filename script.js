@@ -1027,11 +1027,15 @@ async function toggleMic() {
             // and for handleTranscriptionOutput to update state.transcriptAccumulator
             await new Promise(r => setTimeout(r, 600));
 
-            await handleSpeechEnd();
+            // DON'T await handleSpeechEnd - let AI trigger in background 
+            // so we can start the next mic turn immediately
+            handleSpeechEnd();
 
             if (state.isRecording) {
-                state.activeRecMode = state.micMode; // Sync with new mode
+                state.activeRecMode = state.micMode; // Sync with new mode ('USER' or 'INTERVIEWER')
                 console.log(`Starting Native session for ${state.activeRecMode} turn...`);
+                showToast(state.activeRecMode === 'USER' ? "Recording You" : "Recording Interviewer", 2000);
+
                 await SpeechRecognition.start({
                     language: 'en-US',
                     partialResults: true,
