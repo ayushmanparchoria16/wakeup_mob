@@ -12,6 +12,7 @@ async function loadModel() {
     }
 
     try {
+        console.log("Worker: Initializing Transformers.js pipeline...");
         transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
             device: 'webgpu', // Try WebGPU first
             progress_callback: (detail) => {
@@ -22,6 +23,7 @@ async function loadModel() {
     } catch (err) {
         console.warn('WebGPU failed, falling back to WASM/CPU:', err);
         try {
+            self.postMessage({ status: 'log', message: 'WebGPU not available, using CPU...' });
             transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
                 device: 'wasm',
                 progress_callback: (detail) => {
@@ -30,6 +32,7 @@ async function loadModel() {
             });
             self.postMessage({ status: 'ready', message: 'Local ASR Ready (CPU)' });
         } catch (err2) {
+            console.error("Worker Load Error:", err2);
             self.postMessage({ status: 'error', message: 'Failed to load model: ' + err2.message });
         }
     }

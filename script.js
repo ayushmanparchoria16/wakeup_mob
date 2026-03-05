@@ -133,8 +133,11 @@ function init() {
     // Initialize Speech Engines (Web or Native)
     setupSpeechRecognition();
 
-    // Background pre-download of Whisper model for Android
-    if (window.Capacitor && window.Capacitor.isNativePlatform() && !state.isElectron) {
+    // Background pre-download of Whisper model for Mobile (Native or Browser)
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (isMobile && !state.isElectron) {
+        console.log("Mobile device detected, prioritizing Local ASR initialization...");
+        state.asrMode = 'LOCAL_ANDROID'; // Pre-set to avoid fallback competition
         setupAndroidLocalASR();
     }
 
@@ -200,8 +203,8 @@ function init() {
         }
     });
 
-    // Electron-Specific Local ASR Hook
-    if (state.isElectron) {
+    // 2. Setup Desktop Logic (Electron Bridge)
+    if (state.isElectron && window.electronAPI) {
         console.log("Electron Environment Detected: Enabling Local ASR hooks");
         window.electronAPI.onAsrEvent((msg) => handleLocalAsrEvent(msg));
     }
@@ -578,17 +581,32 @@ function handleVADSpeechEnd(audio) {
 }
 
 async function setupSpeechRecognition() {
-    // Detect environment
-    state.isNative = window.Capacitor && window.Capacitor.isNativePlatform();
-
-    if (state.isNative) {
-        console.log("Capacitor Native Platform Active");
-        return await setupNativeSpeechRecognition();
+    // 1. Detect Electron Environment First
+    if (state.isElectron && window.electronAPI) {
+        console.log("Electron Environment Detected: Using Local Python Sidecar");
+        state.asrMode = 'LOCAL';
+        return;
     }
 
+    // 2. Detect Mobile Environment (Native or Browser)
+    state.isNative = window.Capacitor && window.Capacitor.isNativePlatform();
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    if (state.isNative || isMobile) {
+        console.log("Mobile Environment Detected. Mode:", state.asrMode);
+        // If Local Android ASR (Whisper) is target, we let VAD handle it
+        if (state.asrMode === 'LOCAL_ANDROID') {
+            return;
+        }
+
+        if (state.isNative) {
+            return await setupNativeSpeechRecognition();
+        }
+    }
+
+    // 3. Fallback/Standard Web Environment
     if (capacitorChecks < 15) {
         capacitorChecks++;
-        // Use a Promise to make this "awaitable"
         await new Promise(r => setTimeout(r, 400));
         return await setupSpeechRecognition();
     }
@@ -683,9 +701,22 @@ async function setupSpeechRecognition() {
 }
 
 function handleLocalAsrEvent(msg) {
-    if (!state.isRecording) return;
+    if (!state.isRecording && msg.status !== 'initializing' && msg.status !== 'ready') return;
 
-    if (msg.event === "speech_start") {
+    if (msg.status === "initializing") {
+        displays.whisperLoader.classList.remove('hidden');
+        displays.whisperStatusIcon.textContent = 'settings';
+        displays.whisperStatusText.textContent = msg.message || "Initializing Desktop AI...";
+        displays.whisperProgress.style.width = '50%';
+    } else if (msg.status === "ready") {
+        displays.whisperLoader.classList.remove('hidden');
+        displays.whisperStatusIcon.textContent = 'check_circle';
+        displays.whisperStatusIcon.classList.add('success');
+        displays.whisperStatusText.textContent = "Desktop ASR Ready";
+        displays.whisperProgress.style.width = '100%';
+        setTimeout(() => displays.whisperLoader.classList.add('hidden'), 3000);
+        showToast("Local ASR: Ready & Optimized");
+    } else if (msg.event === "speech_start") {
         updateVadUI(true);
         state.isSpeaking = true;
     } else if (msg.event === "speech_end") {
@@ -693,10 +724,10 @@ function handleLocalAsrEvent(msg) {
         state.isSpeaking = false;
     } else if (msg.event === "transcript") {
         handleTranscriptionOutput(msg.text, "");
-    } else if (msg.status === "ready") {
-        showToast("Local ASR: Ready & Optimized");
     } else if (msg.status === "error") {
         console.error("Local ASR Error:", msg.error);
+        displays.whisperStatusIcon.textContent = 'error';
+        displays.whisperStatusText.textContent = 'Desktop ASR Error';
         showToast("Local ASR Error. Falling back to Web Speech...");
         state.asrMode = 'WEB';
         try { state.recognition.start(); } catch (e) { }
@@ -704,6 +735,13 @@ function handleLocalAsrEvent(msg) {
 }
 
 async function setupNativeSpeechRecognition() {
+    // If Local ASR is active or intended for Android, we might skip the native plugin
+    // to avoid mic conflicts with Web VAD.
+    if (state.asrMode === 'LOCAL_ANDROID') {
+        console.log("Native STT: Bypassing due to Local Whisper choice.");
+        return;
+    }
+
     if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.SpeechRecognition) {
         console.error("Native SpeechRecognition Plugin NOT found in bridge!");
         showToast("Error: Native Speech Plugin not found", 5000);
@@ -919,7 +957,7 @@ async function startSession() {
     state.lastFinishedMode = null;
 
     try {
-        if (state.isNative) {
+        if (state.isNative && state.asrMode !== 'LOCAL_ANDROID') {
             const { SpeechRecognition } = Capacitor.Plugins;
             await SpeechRecognition.start({
                 language: 'en-US',
@@ -929,6 +967,9 @@ async function startSession() {
         } else if (state.isElectron) {
             state.asrMode = 'LOCAL';
             window.electronAPI.startAsr();
+        } else if (state.asrMode === 'LOCAL_ANDROID') {
+            console.log("Starting Session with Local Android ASR");
+            // No need to start anything else, VAD + Worker are already primed
         } else if (state.recognition) {
             state.asrMode = 'WEB';
             try { state.recognition.start(); } catch (e) { }
