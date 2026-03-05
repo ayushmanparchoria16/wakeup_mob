@@ -40,6 +40,10 @@ const state = {
     lastFinishedMode: null,
     isNative: false,
     currentInterim: "", // Track latest partial for fallback
+    currentTurnBuffer: "", // Accumulate all segments for the CURRENT turn
+    transcriptLog: [],
+    chatHistory: [], // {role: 'user'|'assistant', content: ""}
+    isProcessingAI: false
 };
 
 // --- DOM Elements ---
@@ -583,57 +587,53 @@ async function setupNativeSpeechRecognition() {
 
 function handleTranscriptionOutput(finalT, interimT) {
     if (interimT) {
-        state.currentInterim = interimT; // Always keep latest partial
-        updateTranscriptUI(interimT, "", state.activeRecMode);
+        state.currentInterim = interimT;
+        updateTranscriptUI(state.currentTurnBuffer, interimT, state.activeRecMode);
         state.isSpeaking = true;
         updateVadUI(true);
     }
 
     if (finalT) {
-        state.currentInterim = ""; // Clear interim once finalized
+        state.currentInterim = "";
         const cleanText = finalT.trim();
         if (cleanText.length > 0) {
-            console.log(`Local Transcription (${state.activeRecMode}):`, cleanText);
+            state.currentTurnBuffer += cleanText + " ";
+            // Real-time update showing finalized + interim
+            updateTranscriptUI(state.currentTurnBuffer, "", state.activeRecMode);
 
-            // Log it
+            // Log it for internal history immediately
             const timestamp = new Date().toLocaleTimeString();
             state.transcriptLog.push({ timestamp, text: cleanText, mode: state.activeRecMode });
-
-            // Add final text to UI feed permanently
-            addTranscriptBubble(cleanText, state.activeRecMode);
-
-            // Accumulate text if Interviewer, will send on mic toggle
-            if (state.activeRecMode === 'INTERVIEWER') {
-                state.transcriptAccumulator += cleanText + " ";
-            }
         }
-
         state.isSpeaking = false;
         updateVadUI(false);
     }
 }
 
 async function handleSpeechEnd() {
-    // Trigger AI if we just finished an INTERVIEWER chunk and the UI toggled to USER mode
-    if (state.activeRecMode === 'INTERVIEWER' && state.micMode === 'USER') {
-        let textToTrigger = state.transcriptAccumulator.trim();
+    // 1. Move the accumulated turn buffer to a permanent bubble
+    const finalTurnText = state.currentTurnBuffer.trim();
+    if (finalTurnText) {
+        addTranscriptBubble(finalTurnText, state.activeRecMode);
+    }
 
-        // Fallback: If no final segments were captured, use the last interim result
+    // 2. If Interviewer finished, trigger AI
+    if (state.activeRecMode === 'INTERVIEWER' && state.micMode === 'USER') {
+        // Use turn buffer or interim fallback
+        let textToTrigger = finalTurnText;
         if (!textToTrigger && state.currentInterim.trim()) {
-            console.log("Using interim fallback for AI trigger");
             textToTrigger = state.currentInterim.trim();
         }
 
         if (textToTrigger.length > 0) {
-            console.log("Triggering AI after capturing interviewer audio:", textToTrigger);
             showToast("AI Processing Question...", 2000);
             await triggerAI(textToTrigger);
-            state.transcriptAccumulator = "";
-            state.currentInterim = ""; // Reset
-        } else {
-            console.warn("Speech ended but no text was captured for AI.");
         }
     }
+
+    // Clear turn-specific buffers
+    state.currentTurnBuffer = "";
+    state.currentInterim = "";
 }
 
 function startVisualizerLoop() {
@@ -986,15 +986,15 @@ window.receiveDesktopScreenshot = async function (dataUrl) {
 };
 
 async function quickReply() {
-    // Use whatever is in accumulator OR last transcript
-    let text = state.transcriptAccumulator.trim();
+    // Use whatever is in current turn buffer OR last transcript log
+    let text = state.currentTurnBuffer.trim();
     if (!text && state.transcriptLog.length > 0) {
         text = state.transcriptLog[state.transcriptLog.length - 1].text;
     }
 
     if (text) {
         await triggerAI(text, "QUICK");
-        state.transcriptAccumulator = ""; // Clear buffer
+        state.currentTurnBuffer = ""; // Clear buffer
     } else {
         showToast("Nothing to reply to!");
     }
