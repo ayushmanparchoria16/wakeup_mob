@@ -551,6 +551,28 @@ async function setupNativeSpeechRecognition() {
         }
     });
 
+    // AUTO-RESTART Loop for Native Android
+    // The native engine often stops after a segment or silence.
+    // We restart it automatically if state.isRecording is still true.
+    SpeechRecognition.addListener('listeningState', (event) => {
+        console.log("Native Listening State Update:", event.status);
+        if (event.status === 'stopped' && state.isRecording) {
+            console.log("Native Speech stopped while recording. restarting...");
+            setTimeout(async () => {
+                if (state.isRecording) {
+                    try {
+                        await SpeechRecognition.start({
+                            language: 'en-US',
+                            partialResults: true,
+                            popup: false,
+                            allowForSilence: 3000 // Higher threshold for pauses
+                        });
+                    } catch (e) { console.warn("Native auto-restart failed:", e); }
+                }
+            }, 100);
+        }
+    });
+
     SpeechRecognition.addListener('error', (err) => {
         console.error("Native Speech Error:", err);
         showToast("Mic Error: " + err.message);
@@ -1040,7 +1062,7 @@ async function toggleMic() {
                     language: 'en-US',
                     partialResults: true,
                     popup: false,
-                    allowForSilence: 1500 // Encourage segmentResults on Android
+                    allowForSilence: 3000 // Higher threshold for pauses
                 });
             }
         } catch (e) {
