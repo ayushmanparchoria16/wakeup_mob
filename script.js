@@ -8,6 +8,7 @@ const CONFIG = {
     // Audio Analysis Settings
     MIN_DECIBELS: -45, // Threshold for detecting speech
     SILENCE_DELAY_MS: 1500, // How long to wait in silence before sending audio
+    AUTO_TRIGGER_AI: true, // New: Enable VAD-based auto-flipping of turns
 };
 
 const state = {
@@ -44,7 +45,12 @@ const state = {
     transcriptLog: [],
     chatHistory: [], // {role: 'user'|'assistant', content: ""}
     isProcessingAI: false,
-    isTransitioning: false // Prevent auto-restart during turn-switch
+    isTransitioning: false, // Prevent auto-restart during turn-switch
+    isElectron: !!(window.electronAPI),
+    asrMode: 'OFF', // 'OFF' | 'LOCAL' | 'WEB' | 'LOCAL_ANDROID'
+    vad: null,
+    vadInitialized: false,
+    asrWorker: null
 };
 
 // --- DOM Elements ---
@@ -123,6 +129,11 @@ function init() {
     // Initialize Speech Engines (Web or Native)
     setupSpeechRecognition();
 
+    // Background pre-download of Whisper model for Android
+    if (window.Capacitor && window.Capacitor.isNativePlatform() && !state.isElectron) {
+        setupAndroidLocalASR();
+    }
+
     // Check protocol
     if (window.location.protocol === 'file:') {
         showToast("⚠️ Run via Local Server to save permissions!");
@@ -184,6 +195,12 @@ function init() {
             toggleMic();
         }
     });
+
+    // Electron-Specific Local ASR Hook
+    if (state.isElectron) {
+        console.log("Electron Environment Detected: Enabling Local ASR hooks");
+        window.electronAPI.onAsrEvent((msg) => handleLocalAsrEvent(msg));
+    }
 }
 
 // --- Auth Logic ---
@@ -436,6 +453,14 @@ async function setupMobileFriendlyAudio() {
         // 3. Start our custom visualizer loop
         startVisualizerLoop();
 
+        // 4. Initialize Web VAD (Advanced Detection)
+        await setupWebVAD();
+
+        // 5. Initialize Local ASR for Android (Optional/Background Load)
+        if (state.isNative && !state.isElectron) {
+            setupAndroidLocalASR();
+        }
+
         showToast("Audio Ready!");
         displays.vadStatus.textContent = "VAD: Ready";
         displays.vadStatus.classList.remove('hidden');
@@ -449,6 +474,84 @@ async function setupMobileFriendlyAudio() {
 }
 
 let capacitorChecks = 0; // Global counter for Capacitor checks
+
+async function setupWebVAD() {
+    if (state.vadInitialized || typeof vad === 'undefined') return;
+
+    try {
+        console.log("Initializing Web VAD (Silero)...");
+        state.vad = await vad.MicVAD.new({
+            // Use the existing stream from visualizer to avoid mic conflict
+            stream: state.stream,
+            minSpeechFrames: 5,
+            positiveSpeechThreshold: 0.8,
+            negativeSpeechThreshold: 0.4,
+            onSpeechStart: () => {
+                console.log("VAD: Speech Started");
+                updateVadUI(true);
+                state.isSpeaking = true;
+            },
+            onSpeechEnd: (audio) => {
+                console.log("VAD: Speech Ended");
+                updateVadUI(false);
+                state.isSpeaking = false;
+
+                // If we are in the meeting and recording, use VAD to force turn switch if needed
+                if (state.isRecording && !state.isElectron) {
+                    handleVADSpeechEnd(audio);
+                }
+            },
+        });
+
+        state.vadInitialized = true;
+        console.log("Web VAD Initialized successfully.");
+    } catch (e) {
+        console.error("Web VAD Init failed:", e);
+    }
+}
+
+async function setupAndroidLocalASR() {
+    if (state.asrWorker) return;
+
+    console.log("Setting up Android Local ASR Worker...");
+    state.asrWorker = new Worker('asr-worker.js', { type: 'module' });
+
+    state.asrWorker.onmessage = (e) => {
+        const { status, text, message } = e.data;
+        if (status === 'ready') {
+            showToast("Mobile Whisper: Ready");
+            state.asrMode = 'LOCAL_ANDROID';
+        } else if (status === 'loading') {
+            showToast(message, 3000);
+        } else if (status === 'transcript') {
+            handleTranscriptionOutput(text, "");
+        } else if (status === 'error') {
+            console.error("Android Local ASR Error:", message);
+            showToast("Local ASR Error. Falling back...");
+            state.asrMode = 'WEB';
+        }
+    };
+
+    state.asrWorker.postMessage({ type: 'load' });
+}
+
+function handleVADSpeechEnd(audio) {
+    if (!CONFIG.AUTO_TRIGGER_AI || !state.isRecording) return;
+
+    // If we have local android ASR active, send the audio segment for transcription
+    if (state.asrMode === 'LOCAL_ANDROID' && state.asrWorker && audio) {
+        state.asrWorker.postMessage({ type: 'transcribe', audio });
+    }
+
+    if (state.activeRecMode === 'INTERVIEWER' && state.micMode === 'INTERVIEWER') {
+        const text = state.currentTurnBuffer.trim();
+        // If we have local android ASR, we trust it more to flip since it handles transcription
+        if (text.length > 20 || state.asrMode === 'LOCAL_ANDROID') {
+            console.log("VAD: Auto-finalizing interviewer turn...");
+            toggleMic();
+        }
+    }
+}
 
 async function setupSpeechRecognition() {
     // Detect environment
@@ -530,13 +633,18 @@ async function setupSpeechRecognition() {
             if (state.isRecording) {
                 state.activeRecMode = state.micMode;
                 console.log("Starting next turn for mode:", state.activeRecMode);
-                try { state.recognition.start(); } catch (e) { console.error("Web Restart Fail:", e); }
+                if (state.asrMode === 'LOCAL' && state.isElectron) {
+                    window.electronAPI.startAsr();
+                } else {
+                    try { state.recognition.start(); } catch (e) { console.error("Web Restart Fail:", e); }
+                }
             }
             return;
         }
 
         // Standard auto-restart if we are still recording
         if (state.isRecording) {
+            if (state.asrMode === 'LOCAL' && state.isElectron) return; // Local ASR handles its own restarts
             try {
                 setTimeout(() => {
                     if (state.isRecording && !state.isNative && !state.isTransitioning) {
@@ -548,6 +656,27 @@ async function setupSpeechRecognition() {
             displays.vadStatus.textContent = "VAD: Stopped";
         }
     };
+}
+
+function handleLocalAsrEvent(msg) {
+    if (!state.isRecording) return;
+
+    if (msg.event === "speech_start") {
+        updateVadUI(true);
+        state.isSpeaking = true;
+    } else if (msg.event === "speech_end") {
+        updateVadUI(false);
+        state.isSpeaking = false;
+    } else if (msg.event === "transcript") {
+        handleTranscriptionOutput(msg.text, "");
+    } else if (msg.status === "ready") {
+        showToast("Local ASR: Ready & Optimized");
+    } else if (msg.status === "error") {
+        console.error("Local ASR Error:", msg.error);
+        showToast("Local ASR Error. Falling back to Web Speech...");
+        state.asrMode = 'WEB';
+        try { state.recognition.start(); } catch (e) { }
+    }
 }
 
 async function setupNativeSpeechRecognition() {
@@ -773,10 +902,15 @@ async function startSession() {
                 partialResults: true,
                 popup: false
             });
+        } else if (state.isElectron) {
+            state.asrMode = 'LOCAL';
+            window.electronAPI.startAsr();
         } else if (state.recognition) {
+            state.asrMode = 'WEB';
             try { state.recognition.start(); } catch (e) { }
         }
-        if (state.audioContext.state === 'suspended') {
+
+        if (state.audioContext && state.audioContext.state === 'suspended') {
             state.audioContext.resume();
         }
         updateMicUI();
@@ -1083,7 +1217,11 @@ async function toggleMic() {
                 showToast("Mic Start failed.");
                 state.isRecording = false;
             }
+        } else if (state.isElectron) {
+            state.asrMode = 'LOCAL';
+            window.electronAPI.startAsr();
         } else if (state.recognition) {
+            state.asrMode = 'WEB';
             try { state.recognition.start(); } catch (e) { }
         }
         if (state.audioContext && state.audioContext.state === 'suspended') {
@@ -1110,6 +1248,19 @@ async function toggleMic() {
             console.error("Native transition error:", e);
             state.isTransitioning = false;
         }
+    } else if (state.isElectron && state.asrMode === 'LOCAL') {
+        state.isTransitioning = true;
+        window.electronAPI.stopAsr();
+        // Emulate a stop for event-driven logic to hit handleSpeechEnd
+        // Wait for potential final buffer
+        setTimeout(() => {
+            handleSpeechEnd();
+            state.isTransitioning = false;
+            if (state.isRecording) {
+                state.activeRecMode = state.micMode;
+                window.electronAPI.startAsr();
+            }
+        }, 300);
     } else if (state.recognition) {
         state.isTransitioning = true;
         state.recognition.stop();

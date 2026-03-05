@@ -15,6 +15,15 @@
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
     <!-- Capacitor Bridge (Required for Android Native Features) -->
     <script src="capacitor.js"></script>
+
+    <!-- Web VAD & ONNX Runtime (For Localized Speech Detection) -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.lib.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web/dist/bundle.min.js"></script>
+
+    <!-- Transformers.js (For Local Local ASR) -->
+    <script type="module">
+        import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.3';
+    </script>
 </head>
 
 <body>
