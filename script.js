@@ -43,7 +43,8 @@ const state = {
     currentTurnBuffer: "", // Accumulate all segments for the CURRENT turn
     transcriptLog: [],
     chatHistory: [], // {role: 'user'|'assistant', content: ""}
-    isProcessingAI: false
+    isProcessingAI: false,
+    isTransitioning: false // Prevent auto-restart during turn-switch
 };
 
 // --- DOM Elements ---
@@ -559,24 +560,24 @@ async function setupNativeSpeechRecognition() {
     // We restart it automatically if state.isRecording is still true.
     SpeechRecognition.addListener('listeningState', (event) => {
         console.log("Native Listening State Update:", event.status);
-        if (event.status === 'stopped' && state.isRecording) {
+        if (event.status === 'stopped' && state.isRecording && !state.isTransitioning) {
             // CRITICAL: If we have an unfinalized partial, save it before restarting
             if (state.currentInterim && state.currentInterim.trim().length > 0) {
                 console.log("Saving unfinalized text before native restart:", state.currentInterim);
                 state.currentTurnBuffer += state.currentInterim.trim() + " ";
-                state.currentInterim = ""; // Prevent double-adding
+                state.currentInterim = "";
                 updateTranscriptUI(state.currentTurnBuffer, "", state.activeRecMode);
             }
 
             console.log("Native Speech stopped while recording. restarting...");
             setTimeout(async () => {
-                if (state.isRecording) {
+                if (state.isRecording && !state.isTransitioning) {
                     try {
                         await SpeechRecognition.start({
                             language: 'en-US',
                             partialResults: true,
                             popup: false,
-                            allowForSilence: 5000 // 5 seconds breathing room
+                            allowForSilence: 40000 // 40 seconds Always-On
                         });
                     } catch (e) { console.warn("Native auto-restart failed:", e); }
                 }
@@ -1024,7 +1025,8 @@ async function toggleMic() {
                 await SpeechRecognition.start({
                     language: 'en-US',
                     partialResults: true,
-                    popup: false
+                    popup: false,
+                    allowForSilence: 40000
                 });
             } catch (e) {
                 console.error("Native Start Fail:", e);
@@ -1051,12 +1053,13 @@ async function toggleMic() {
     if (state.isNative) {
         const { SpeechRecognition } = Capacitor.Plugins;
         try {
+            state.isTransitioning = true; // Block auto-restart loop
             await SpeechRecognition.stop();
             // Crucial: Wait long enough for the native engine to push the last segmentResults
             // and for handleTranscriptionOutput to update state.transcriptAccumulator
             await new Promise(r => setTimeout(r, 600));
 
-            // DON'T await handleSpeechEnd - let AI trigger in background 
+            // DON'T await handleSpeechEnd - let AI trigger in background
             // so we can start the next mic turn immediately
             handleSpeechEnd();
 
@@ -1069,11 +1072,13 @@ async function toggleMic() {
                     language: 'en-US',
                     partialResults: true,
                     popup: false,
-                    allowForSilence: 3000 // Higher threshold for pauses
+                    allowForSilence: 40000 // 40 seconds Always-On
                 });
+                state.isTransitioning = false; // Re-enable auto-restart listener
             }
         } catch (e) {
             console.error("Native transition error:", e);
+            state.isTransitioning = false;
         }
     } else if (state.recognition) {
         state.recognition.stop();
