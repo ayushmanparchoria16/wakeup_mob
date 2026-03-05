@@ -506,19 +506,25 @@ async function setupSpeechRecognition() {
         console.error("Speech Recognition Error:", event.error);
         if (event.error === 'not-allowed') {
             showToast("Microphone access denied for Speech Recognition.");
+        } else if (event.error === 'no-speech') {
+            // Silently handle no-speech to avoid cluttering UI, but log for debug
+            console.warn("No speech detected by recognition engine.");
+        } else if (event.error === 'network') {
+            showToast("Network error in Speech Recognition. Please check your connection.");
         }
     };
 
     state.recognition.onend = () => {
-        // DON'T call handleSpeechEnd here anymore to keep one bubble per turn
-        // Just restart if we are still recording
-        if (state.isRecording) {
+        // Just restart if we are still recording and NOT currently transitioning
+        if (state.isRecording && !state.isTransitioning) {
             try {
                 setTimeout(() => {
-                    if (state.isRecording && !state.isNative) state.recognition.start();
+                    if (state.isRecording && !state.isNative && !state.isTransitioning) {
+                        state.recognition.start();
+                    }
                 }, 100);
             } catch (e) { }
-        } else {
+        } else if (!state.isRecording) {
             displays.vadStatus.textContent = "VAD: Stopped";
         }
     };
@@ -1081,7 +1087,19 @@ async function toggleMic() {
             state.isTransitioning = false;
         }
     } else if (state.recognition) {
+        state.isTransitioning = true;
         state.recognition.stop();
+        // For web, handleSpeechEnd must be called once the recognition actually stops
+        // or we can call it here if we assume the buffer is ready.
+        // Let's call it here for immediate response like native does.
+        setTimeout(() => {
+            handleSpeechEnd();
+            state.isTransitioning = false;
+            if (state.isRecording) {
+                state.activeRecMode = state.micMode;
+                try { state.recognition.start(); } catch (e) { }
+            }
+        }, 100);
     }
 }
 
