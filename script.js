@@ -37,7 +37,8 @@ const state = {
 
     micMode: 'INTERVIEWER', // 'INTERVIEWER' or 'USER'
     activeRecMode: 'INTERVIEWER',
-    lastFinishedMode: null
+    lastFinishedMode: null,
+    isNative: false
 };
 
 // --- DOM Elements ---
@@ -427,6 +428,14 @@ async function setupMobileFriendlyAudio() {
 }
 
 function setupSpeechRecognition() {
+    // Detect environment
+    state.isNative = window.Capacitor && window.Capacitor.isNativePlatform();
+
+    if (state.isNative) {
+        setupNativeSpeechRecognition();
+        return;
+    }
+
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
         showToast("Speech Recognition not supported in this browser. Please use Chrome or Edge.");
@@ -436,7 +445,7 @@ function setupSpeechRecognition() {
     state.recognition = new SpeechRecognition();
     state.recognition.continuous = true;
     state.recognition.interimResults = true;
-    state.recognition.lang = 'en-US'; // Or user configurable
+    state.recognition.lang = 'en-US';
 
     state.recognition.onstart = () => {
         state.isSpeaking = false;
@@ -459,33 +468,7 @@ function setupSpeechRecognition() {
             }
         }
 
-        if (interimTranscript) {
-            updateTranscriptUI(interimTranscript, "", state.activeRecMode);
-            state.isSpeaking = true;
-            updateVadUI(true);
-        }
-
-        if (finalTranscript) {
-            const cleanText = finalTranscript.trim();
-            if (cleanText.length > 0) {
-                console.log(`Local Transcription (${state.activeRecMode}):`, cleanText);
-
-                // Log it
-                const timestamp = new Date().toLocaleTimeString();
-                state.transcriptLog.push({ timestamp, text: cleanText, mode: state.activeRecMode });
-
-                // Add final text to UI feed permanently
-                addTranscriptBubble(cleanText, state.activeRecMode);
-
-                // Accumulate text if Interviewer, will send on mic toggle
-                if (state.activeRecMode === 'INTERVIEWER') {
-                    state.transcriptAccumulator += cleanText + " ";
-                }
-            }
-
-            state.isSpeaking = false;
-            updateVadUI(false);
-        }
+        handleTranscriptionOutput(finalTranscript, interimTranscript);
     };
 
     state.recognition.onerror = (event) => {
@@ -496,28 +479,92 @@ function setupSpeechRecognition() {
     };
 
     state.recognition.onend = () => {
-        // Trigger AI if we just finished an INTERVIEWER chunk and the UI toggled to USER mode
-        if (state.activeRecMode === 'INTERVIEWER' && state.micMode === 'USER') {
-            if (state.transcriptAccumulator.trim().length > 0) {
-                console.log("Triggering AI after capturing trailing INTERVIEWER audio");
-                triggerAI(state.transcriptAccumulator.trim());
-                state.transcriptAccumulator = "";
-            }
-        }
+        handleSpeechEnd();
 
         // Automatically restart speech recognition if session is still active
         if (state.isRecording) {
             try {
                 setTimeout(() => {
-                    if (state.isRecording) state.recognition.start();
+                    if (state.isRecording && !state.isNative) state.recognition.start();
                 }, 100);
-            } catch (e) {
-                // Ignore if it's already started
-            }
+            } catch (e) { }
         } else {
             displays.vadStatus.textContent = "VAD: Stopped";
         }
     };
+}
+
+async function setupNativeSpeechRecognition() {
+    const { SpeechRecognition } = Capacitor.Plugins;
+
+    // Check/Request Permissions
+    const perm = await SpeechRecognition.checkPermissions();
+    if (perm.speechRecognition !== 'granted') {
+        await SpeechRecognition.requestPermissions();
+    }
+
+    SpeechRecognition.addListener('partialResults', (data) => {
+        if (!state.isRecording) return;
+        if (data.matches && data.matches.length > 0) {
+            handleTranscriptionOutput("", data.matches[0]);
+        }
+    });
+
+    SpeechRecognition.addListener('finishedResults', (data) => {
+        if (!state.isRecording) return;
+        if (data.matches && data.matches.length > 0) {
+            handleTranscriptionOutput(data.matches[0], "");
+        }
+    });
+
+    SpeechRecognition.addListener('error', (err) => {
+        console.error("Native Speech Error:", err);
+        showToast("Native Speech Error: " + err.message);
+    });
+
+    console.log("Android Native Transcription Hooked");
+    showToast("Android Native Transcription Active");
+}
+
+function handleTranscriptionOutput(finalT, interimT) {
+    if (interimT) {
+        updateTranscriptUI(interimT, "", state.activeRecMode);
+        state.isSpeaking = true;
+        updateVadUI(true);
+    }
+
+    if (finalT) {
+        const cleanText = finalT.trim();
+        if (cleanText.length > 0) {
+            console.log(`Local Transcription (${state.activeRecMode}):`, cleanText);
+
+            // Log it
+            const timestamp = new Date().toLocaleTimeString();
+            state.transcriptLog.push({ timestamp, text: cleanText, mode: state.activeRecMode });
+
+            // Add final text to UI feed permanently
+            addTranscriptBubble(cleanText, state.activeRecMode);
+
+            // Accumulate text if Interviewer, will send on mic toggle
+            if (state.activeRecMode === 'INTERVIEWER') {
+                state.transcriptAccumulator += cleanText + " ";
+            }
+        }
+
+        state.isSpeaking = false;
+        updateVadUI(false);
+    }
+}
+
+function handleSpeechEnd() {
+    // Trigger AI if we just finished an INTERVIEWER chunk and the UI toggled to USER mode
+    if (state.activeRecMode === 'INTERVIEWER' && state.micMode === 'USER') {
+        if (state.transcriptAccumulator.trim().length > 0) {
+            console.log("Triggering AI after capturing trailing INTERVIEWER audio");
+            triggerAI(state.transcriptAccumulator.trim());
+            state.transcriptAccumulator = "";
+        }
+    }
 }
 
 function startVisualizerLoop() {
@@ -592,7 +639,14 @@ async function startSession() {
     state.lastFinishedMode = null;
 
     try {
-        if (state.recognition) {
+        if (state.isNative) {
+            const { SpeechRecognition } = Capacitor.Plugins;
+            await SpeechRecognition.start({
+                language: 'en-US',
+                partialResults: true,
+                popup: false
+            });
+        } else if (state.recognition) {
             try { state.recognition.start(); } catch (e) { }
         }
         if (state.audioContext.state === 'suspended') {
@@ -888,7 +942,14 @@ function toggleMic() {
         state.activeRecMode = 'INTERVIEWER';
         state.lastFinishedMode = null;
 
-        if (state.recognition) {
+        if (state.isNative) {
+            const { SpeechRecognition } = Capacitor.Plugins;
+            SpeechRecognition.start({
+                language: 'en-US',
+                partialResults: true,
+                popup: false
+            });
+        } else if (state.recognition) {
             try { state.recognition.start(); } catch (e) { }
         }
         if (state.audioContext && state.audioContext.state === 'suspended') {
@@ -907,7 +968,24 @@ function toggleMic() {
 
     // Trigger early push by restarting recognition.
     // Trailing audio processing and AI trigger will happen in onend phase
-    if (state.recognition) {
+    if (state.isNative) {
+        const { SpeechRecognition } = Capacitor.Plugins;
+        SpeechRecognition.stop();
+        // Native onstop doesn't always trigger an event we use for restarting,
+        // so we manually handle the Turn logic if needed, but start() will be called in toggle logic if we add it.
+        // Actually, we'll let the next turn start it.
+        handleSpeechEnd();
+        setTimeout(() => {
+            if (state.isRecording) {
+                state.activeRecMode = state.micMode;
+                SpeechRecognition.start({
+                    language: 'en-US',
+                    partialResults: true,
+                    popup: false
+                });
+            }
+        }, 100);
+    } else if (state.recognition) {
         state.recognition.stop();
     }
 }
