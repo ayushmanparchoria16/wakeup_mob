@@ -475,10 +475,9 @@ function setupSpeechRecognition() {
                 // Add final text to UI feed permanently
                 addTranscriptBubble(cleanText, state.micMode);
 
-                // Send to Assistant ONLY if Interviewer
+                // Accumulate text if Interviewer, will send on mic toggle
                 if (state.micMode === 'INTERVIEWER') {
-                    // Trigger AI directly on text
-                    triggerAI(cleanText);
+                    state.transcriptAccumulator += cleanText + " ";
                 }
             }
 
@@ -891,6 +890,13 @@ function toggleMic() {
     // Toggle the active mode
     state.micMode = (state.micMode === 'INTERVIEWER') ? 'USER' : 'INTERVIEWER';
     updateMicUI();
+
+    // Trigger AI if we just finished Interviewer mode and have accumulated text
+    if (state.lastFinishedMode === 'INTERVIEWER' && state.transcriptAccumulator.trim().length > 0) {
+        console.log("Triggering AI on mode switch from Interviewer to User");
+        triggerAI(state.transcriptAccumulator.trim());
+        state.transcriptAccumulator = ""; // Clear buffer after sending to AI
+    }
 
     // Trigger early push by restarting recognition.
     // The onend event will restart it instantly since state.isRecording is true.
