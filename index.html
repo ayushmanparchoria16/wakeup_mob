@@ -37,6 +37,16 @@
     <script src="https://js.puter.com/v2/"></script>
 
     <div class="app-container">
+        <!-- Whisper Loading Status (Discreet) -->
+        <div id="whisper-loader" class="whisper-loader hidden">
+            <div class="loader-content">
+                <span id="whisper-status-icon" class="material-icons-round">downloading</span>
+                <span id="whisper-status-text">Initializing AI...</span>
+                <div class="progress-container">
+                    <div id="whisper-progress" class="progress-bar"></div>
+                </div>
+            </div>
+        </div>
         <!-- Screen 1: Auth Interface -->
         <section id="auth-screen" class="screen active">
             <div class="glass-card auth-card">

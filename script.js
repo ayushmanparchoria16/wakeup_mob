@@ -102,6 +102,10 @@ const displays = {
     statWords: document.getElementById('stat-words'),
     statInsights: document.getElementById('stat-insights'),
     toast: document.getElementById('toast'),
+    whisperLoader: document.getElementById('whisper-loader'),
+    whisperProgress: document.getElementById('whisper-progress'),
+    whisperStatusText: document.getElementById('whisper-status-text'),
+    whisperStatusIcon: document.getElementById('whisper-status-icon'),
     // Forms
     loginForm: document.getElementById('login-form'),
     regForm: document.getElementById('register-form'),
@@ -517,17 +521,37 @@ async function setupAndroidLocalASR() {
     state.asrWorker = new Worker('asr-worker.js', { type: 'module' });
 
     state.asrWorker.onmessage = (e) => {
-        const { status, text, message } = e.data;
-        if (status === 'ready') {
-            showToast("Mobile Whisper: Ready");
+        const { status, text, message, detail } = e.data;
+
+        if (status === 'progress') {
+            // Show loader only if it's a real loading event
+            displays.whisperLoader.classList.remove('hidden');
+            if (detail.progress !== undefined) {
+                displays.whisperProgress.style.width = detail.progress + '%';
+                displays.whisperStatusText.textContent = `Loading ${detail.file}: ${Math.round(detail.progress)}%`;
+            }
+        } else if (status === 'ready') {
+            console.log("Local ASR Ready:", message);
             state.asrMode = 'LOCAL_ANDROID';
-        } else if (status === 'loading') {
-            showToast(message, 3000);
+
+            // Show success state
+            displays.whisperLoader.classList.remove('hidden');
+            displays.whisperProgress.style.width = '100%';
+            displays.whisperStatusIcon.textContent = 'check_circle';
+            displays.whisperStatusIcon.classList.add('success');
+            displays.whisperStatusText.textContent = 'Whisper Cached & Ready';
+
+            // Auto-hide after 3 seconds
+            setTimeout(() => {
+                displays.whisperLoader.classList.add('hidden');
+            }, 3000);
+
         } else if (status === 'transcript') {
             handleTranscriptionOutput(text, "");
         } else if (status === 'error') {
             console.error("Android Local ASR Error:", message);
-            showToast("Local ASR Error. Falling back...");
+            displays.whisperStatusIcon.textContent = 'error';
+            displays.whisperStatusText.textContent = 'Load Error';
             state.asrMode = 'WEB';
         }
     };

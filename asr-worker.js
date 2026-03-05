@@ -6,20 +6,27 @@ env.allowLocalModels = false;
 let transcriber = null;
 
 async function loadModel() {
-    if (transcriber) return;
-
-    self.postMessage({ status: 'loading', message: 'Loading Whisper Tiny (75MB)...' });
+    if (transcriber) {
+        self.postMessage({ status: 'ready', message: 'ASR already available' });
+        return;
+    }
 
     try {
         transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
             device: 'webgpu', // Try WebGPU first
+            progress_callback: (detail) => {
+                self.postMessage({ status: 'progress', detail });
+            }
         });
-        self.postMessage({ status: 'ready', message: 'Local ASR Ready' });
+        self.postMessage({ status: 'ready', message: 'Local ASR Ready (WebGPU)' });
     } catch (err) {
         console.warn('WebGPU failed, falling back to WASM/CPU:', err);
         try {
             transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-tiny.en', {
                 device: 'wasm',
+                progress_callback: (detail) => {
+                    self.postMessage({ status: 'progress', detail });
+                }
             });
             self.postMessage({ status: 'ready', message: 'Local ASR Ready (CPU)' });
         } catch (err2) {
