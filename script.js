@@ -114,7 +114,7 @@ function init() {
         switchScreen('auth');
     }
 
-    // Initialize Speech Engines (Web or Native with Polling)
+    // Initialize Speech Engines (Web or Native)
     setupSpeechRecognition();
 
     // Check protocol
@@ -430,24 +430,21 @@ async function setupMobileFriendlyAudio() {
     }
 }
 
-let capacitorChecks = 0;
 function setupSpeechRecognition() {
+    // Detect environment
     state.isNative = window.Capacitor && window.Capacitor.isNativePlatform();
 
+    console.log("Environment Check - isNative:", state.isNative);
+    if (window.Capacitor) {
+        console.log("Capacitor Object Found");
+    }
+
     if (state.isNative) {
-        console.log("Capacitor Native Platform Detected");
-        showToast("Android Native Mode Active", 2000);
+        showToast("Android Environment Detected", 2000);
         setupNativeSpeechRecognition();
         return;
     }
 
-    if (capacitorChecks < 15) {
-        capacitorChecks++;
-        setTimeout(setupSpeechRecognition, 400);
-        return;
-    }
-
-    console.log("Using Web Speech API Fallback");
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
         showToast("Speech Recognition not supported in this browser. Please use Chrome or Edge.");
@@ -539,11 +536,10 @@ async function setupNativeSpeechRecognition() {
 
     SpeechRecognition.addListener('error', (err) => {
         console.error("Native Speech Error:", err);
-        showToast("Native Speech Error: " + err.message);
+        showToast("Mic Error: " + err.message);
     });
 
     console.log("Android Native Transcription Hooked");
-    showToast("Android Native Transcription Active");
 }
 
 function handleTranscriptionOutput(finalT, interimT) {
@@ -968,11 +964,6 @@ function toggleMic() {
                 language: 'en-US',
                 partialResults: true,
                 popup: false
-            }).then(result => {
-                // Resolution usually contains the final transcribed sentence
-                if (result.matches && result.matches.length > 0) {
-                    handleTranscriptionOutput(result.matches[0], "");
-                }
             });
         } else if (state.recognition) {
             try { state.recognition.start(); } catch (e) { }
