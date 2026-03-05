@@ -20,8 +20,7 @@ const state = {
     // Mobile Audio Pipeline
     audioContext: null,
     analyser: null,
-    mediaRecorder: null,
-    audioChunks: [],
+    recognition: null,
     stream: null,
 
     // VAD Logic Context
@@ -400,7 +399,7 @@ async function setupMobileFriendlyAudio() {
             }
         });
 
-        // 1. Setup AudioContext for visualizer and simple VAD
+        // 1. Setup AudioContext for visualizer
         state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const source = state.audioContext.createMediaStreamSource(state.stream);
         state.analyser = state.audioContext.createAnalyser();
@@ -408,11 +407,11 @@ async function setupMobileFriendlyAudio() {
         state.analyser.fftSize = 256;
         source.connect(state.analyser);
 
-        // 2. Setup MediaRecorder to capture the actual audio blobs
-        setupMediaRecorder();
+        // 2. Setup Web Speech API for local transcription
+        setupSpeechRecognition();
 
-        // 3. Start our custom silence detection loop
-        startSilenceDetectionLoop();
+        // 3. Start our custom visualizer loop
+        startVisualizerLoop();
 
         showToast("Audio Ready!");
         displays.vadStatus.textContent = "VAD: Ready";
@@ -426,39 +425,92 @@ async function setupMobileFriendlyAudio() {
     }
 }
 
-function setupMediaRecorder() {
-    state.mediaRecorder = new MediaRecorder(state.stream);
-    state.audioChunks = [];
+function setupSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        showToast("Speech Recognition not supported in this browser. Please use Chrome or Edge.");
+        return;
+    }
 
-    state.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-            state.audioChunks.push(event.data);
+    state.recognition = new SpeechRecognition();
+    state.recognition.continuous = true;
+    state.recognition.interimResults = true;
+    state.recognition.lang = 'en-US'; // Or user configurable
+
+    state.recognition.onstart = () => {
+        state.isSpeaking = false;
+        displays.vadStatus.textContent = "VAD: Listening";
+        displays.vadStatus.classList.remove('hidden');
+    };
+
+    state.recognition.onresult = (event) => {
+        if (!state.isRecording) return;
+
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+                finalTranscript += event.results[i][0].transcript;
+            } else {
+                interimTranscript += event.results[i][0].transcript;
+            }
+        }
+
+        if (interimTranscript) {
+            updateTranscriptUI(interimTranscript, "", state.micMode);
+            state.isSpeaking = true;
+            updateVadUI(true);
+        }
+
+        if (finalTranscript) {
+            const cleanText = finalTranscript.trim();
+            if (cleanText.length > 0) {
+                console.log(`Local Transcription (${state.micMode}):`, cleanText);
+
+                // Log it
+                const timestamp = new Date().toLocaleTimeString();
+                state.transcriptLog.push({ timestamp, text: cleanText, mode: state.micMode });
+
+                // Add final text to UI feed permanently
+                addTranscriptBubble(cleanText, state.micMode);
+
+                // Send to Assistant ONLY if Interviewer
+                if (state.micMode === 'INTERVIEWER') {
+                    // Trigger AI directly on text
+                    triggerAI(cleanText);
+                }
+            }
+
+            state.isSpeaking = false;
+            updateVadUI(false);
         }
     };
 
-    state.mediaRecorder.onstop = async () => {
-        if (state.audioChunks.length === 0) return;
-
-        // Combine chunks into a single Blob
-        const audioBlob = new Blob(state.audioChunks, { type: 'audio/webm' });
-
-        // Reset chunks for the next recording
-        state.audioChunks = [];
-
-        // Restart recorder immediately if we are still logically "recording"
-        if (state.isRecording && state.mediaRecorder.state === 'inactive') {
-            state.mediaRecorder.start();
+    state.recognition.onerror = (event) => {
+        console.error("Speech Recognition Error:", event.error);
+        if (event.error === 'not-allowed') {
+            showToast("Microphone access denied for Speech Recognition.");
         }
+    };
 
-        // Process the audio we just captured
-        const modeForThisChunk = state.lastFinishedMode || state.micMode;
-        if (!state.isProcessingAI || modeForThisChunk === 'USER') {
-            processAudioWithPuter(audioBlob, modeForThisChunk);
+    state.recognition.onend = () => {
+        // Automatically restart speech recognition if session is still active
+        if (state.isRecording) {
+            try {
+                setTimeout(() => {
+                    if (state.isRecording) state.recognition.start();
+                }, 100);
+            } catch (e) {
+                // Ignore if it's already started
+            }
+        } else {
+            displays.vadStatus.textContent = "VAD: Stopped";
         }
     };
 }
 
-function startSilenceDetectionLoop() {
+function startVisualizerLoop() {
     const dataArray = new Uint8Array(state.analyser.frequencyBinCount);
 
     const checkVolume = () => {
@@ -479,87 +531,10 @@ function startSilenceDetectionLoop() {
         // Visualizer Update
         simulateVisualizerVolume(averageVolume);
 
-        // Simple VAD Logic based on volume threshold
-        // We define 'speech' as volume > 10 (adjust as needed based on testing)
-        const isCurrentlySpeaking = averageVolume > 10;
-
-        if (isCurrentlySpeaking) {
-            if (!state.isSpeaking) {
-                // Just started speaking
-                state.isSpeaking = true;
-                updateVadUI(true);
-            }
-            // Reset silence timer
-            state.silenceStartTime = 0;
-        } else {
-            if (state.isSpeaking) {
-                // Just started silence
-                if (state.silenceStartTime === 0) {
-                    state.silenceStartTime = Date.now();
-                } else if (Date.now() - state.silenceStartTime > CONFIG.SILENCE_DELAY_MS) {
-                    // Silence has lasted long enough, update UI
-                    state.isSpeaking = false;
-                    updateVadUI(false);
-                    state.silenceStartTime = 0;
-
-                    // We no longer auto-stop the recorder on silence.
-                    // The user must manually toggle the mic to submit the recording.
-                }
-            }
-        }
-
         state.analysisInterval = requestAnimationFrame(checkVolume);
     };
 
     state.analysisInterval = requestAnimationFrame(checkVolume);
-}
-
-async function processAudioWithPuter(audioBlob, mode) {
-    if (audioBlob.size < 1000) return; // Ignore empty/tiny blobs
-
-    // We can show an interim UI here since audio has ended
-    updateTranscriptUI("Transcribing...", "", mode);
-
-    try {
-        console.log(`Sending audio to Puter (${mode})...`);
-        const response = await puter.ai.speech2txt(audioBlob);
-
-        const finalTranscript = response.text || response;
-
-        if (finalTranscript && finalTranscript.trim().length > 3) {
-            const cleanText = finalTranscript.trim();
-            console.log(`Transcription (${mode}):`, cleanText);
-
-            // Log it
-            const timestamp = new Date().toLocaleTimeString();
-            state.transcriptLog.push({ timestamp, text: cleanText, mode: mode });
-
-            // Add final text to UI feed permanently
-            addTranscriptBubble(cleanText, mode);
-
-            // Send to Assistant ONLY if Interviewer
-            if (mode === 'INTERVIEWER') {
-                // If it's an interviewer, trigger AI
-                triggerAI(cleanText);
-            }
-        } else {
-            // Clear the "Transcribing..." text if nothing was found
-            const tempEl = document.getElementById('temp-transcript');
-            if (tempEl) tempEl.innerHTML = "";
-        }
-
-    } catch (err) {
-        if (!state.isRecording) {
-            console.log("Transcription aborted due to session end.");
-            return;
-        }
-
-        console.error("Transcription Failed:", err);
-        showToast("Transcription error: " + err.message);
-
-        const tempEl = document.getElementById('temp-transcript');
-        if (tempEl) tempEl.innerHTML = "<span style='color:red'>Transcription failed</span>";
-    }
 }
 
 
@@ -606,8 +581,8 @@ async function startSession() {
     state.lastFinishedMode = null;
 
     try {
-        if (state.mediaRecorder && state.mediaRecorder.state === 'inactive') {
-            state.mediaRecorder.start();
+        if (state.recognition) {
+            try { state.recognition.start(); } catch (e) { }
         }
         if (state.audioContext.state === 'suspended') {
             state.audioContext.resume();
@@ -900,8 +875,8 @@ function toggleMic() {
         state.micMode = 'INTERVIEWER';
         state.lastFinishedMode = null;
 
-        if (state.mediaRecorder && state.mediaRecorder.state === 'inactive') {
-            state.mediaRecorder.start();
+        if (state.recognition) {
+            try { state.recognition.start(); } catch (e) { }
         }
         if (state.audioContext && state.audioContext.state === 'suspended') {
             state.audioContext.resume();
@@ -917,11 +892,10 @@ function toggleMic() {
     state.micMode = (state.micMode === 'INTERVIEWER') ? 'USER' : 'INTERVIEWER';
     updateMicUI();
 
-    // Trigger chunk processing by stopping the recorder manually.
-    // The onstop event will push the audio blob via processAudioWithPuter,
-    // and instantly restart the recorder because state.isRecording is still true.
-    if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
-        state.mediaRecorder.stop();
+    // Trigger early push by restarting recognition.
+    // The onend event will restart it instantly since state.isRecording is true.
+    if (state.recognition) {
+        state.recognition.stop();
     }
 }
 
@@ -1119,8 +1093,8 @@ function endSession() {
     // Stop custom loops and processes
     cancelAnimationFrame(state.analysisInterval);
 
-    if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
-        state.mediaRecorder.stop();
+    if (state.recognition) {
+        state.recognition.stop();
     }
 
     // Stop all media tracks to release the microphone
