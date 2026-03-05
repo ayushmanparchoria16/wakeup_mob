@@ -114,6 +114,9 @@ function init() {
         switchScreen('auth');
     }
 
+    // Initialize Speech Engines (Web or Native)
+    setupSpeechRecognition();
+
     // Check protocol
     if (window.location.protocol === 'file:') {
         showToast("⚠️ Run via Local Server to save permissions!");
@@ -431,7 +434,13 @@ function setupSpeechRecognition() {
     // Detect environment
     state.isNative = window.Capacitor && window.Capacitor.isNativePlatform();
 
+    console.log("Environment Check - isNative:", state.isNative);
+    if (window.Capacitor) {
+        console.log("Capacitor Object Found");
+    }
+
     if (state.isNative) {
+        showToast("Android Environment Detected", 2000);
         setupNativeSpeechRecognition();
         return;
     }
@@ -495,6 +504,13 @@ function setupSpeechRecognition() {
 }
 
 async function setupNativeSpeechRecognition() {
+    if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.SpeechRecognition) {
+        console.error("Native SpeechRecognition Plugin NOT found in bridge!");
+        showToast("Error: Native Speech Plugin not found", 5000);
+        // Fallback to web if possible as last resort, though it likely won't work well
+        return;
+    }
+
     const { SpeechRecognition } = Capacitor.Plugins;
 
     // Check/Request Permissions
