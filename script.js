@@ -588,13 +588,17 @@ function handleTranscriptionOutput(finalT, interimT) {
     }
 }
 
-function handleSpeechEnd() {
+async function handleSpeechEnd() {
     // Trigger AI if we just finished an INTERVIEWER chunk and the UI toggled to USER mode
     if (state.activeRecMode === 'INTERVIEWER' && state.micMode === 'USER') {
-        if (state.transcriptAccumulator.trim().length > 0) {
-            console.log("Triggering AI after capturing trailing INTERVIEWER audio");
-            triggerAI(state.transcriptAccumulator.trim());
+        const textToTrigger = state.transcriptAccumulator.trim();
+        if (textToTrigger.length > 0) {
+            console.log("Triggering AI after capturing trailing INTERVIEWER audio:", textToTrigger);
+            showToast("AI Processing Question...", 2000);
+            await triggerAI(textToTrigger);
             state.transcriptAccumulator = "";
+        } else {
+            console.warn("Speech ended but transcriptAccumulator was empty.");
         }
     }
 }
@@ -966,7 +970,7 @@ async function quickReply() {
 
 // --- Helper Functions ---
 
-function toggleMic() {
+async function toggleMic() {
     if (!state.isRecording) {
         // First manual start (if stopped completely)
         state.isRecording = true;
@@ -976,11 +980,17 @@ function toggleMic() {
 
         if (state.isNative) {
             const { SpeechRecognition } = Capacitor.Plugins;
-            SpeechRecognition.start({
-                language: 'en-US',
-                partialResults: true,
-                popup: false
-            });
+            try {
+                await SpeechRecognition.start({
+                    language: 'en-US',
+                    partialResults: true,
+                    popup: false
+                });
+            } catch (e) {
+                console.error("Native Start Fail:", e);
+                showToast("Mic Start failed.");
+                state.isRecording = false;
+            }
         } else if (state.recognition) {
             try { state.recognition.start(); } catch (e) { }
         }
@@ -998,25 +1008,28 @@ function toggleMic() {
     state.micMode = (state.micMode === 'INTERVIEWER') ? 'USER' : 'INTERVIEWER';
     updateMicUI();
 
-    // Trigger early push by restarting recognition.
-    // Trailing audio processing and AI trigger will happen in onend phase
     if (state.isNative) {
         const { SpeechRecognition } = Capacitor.Plugins;
-        SpeechRecognition.stop();
-        // Native onstop doesn't always trigger an event we use for restarting,
-        // so we manually handle the Turn logic if needed, but start() will be called in toggle logic if we add it.
-        // Actually, we'll let the next turn start it.
-        handleSpeechEnd();
-        setTimeout(() => {
+        try {
+            await SpeechRecognition.stop();
+            // Crucial: Wait long enough for the native engine to push the last segmentResults
+            // and for handleTranscriptionOutput to update state.transcriptAccumulator
+            await new Promise(r => setTimeout(r, 450));
+
+            await handleSpeechEnd();
+
             if (state.isRecording) {
-                state.activeRecMode = state.micMode;
-                SpeechRecognition.start({
+                state.activeRecMode = state.micMode; // Sync with new mode
+                console.log(`Starting Native session for ${state.activeRecMode} turn...`);
+                await SpeechRecognition.start({
                     language: 'en-US',
                     partialResults: true,
                     popup: false
                 });
             }
-        }, 100);
+        } catch (e) {
+            console.error("Native transition error:", e);
+        }
     } else if (state.recognition) {
         state.recognition.stop();
     }
