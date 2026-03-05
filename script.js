@@ -36,6 +36,7 @@ const state = {
     currentUser: null,
 
     micMode: 'INTERVIEWER', // 'INTERVIEWER' or 'USER'
+    activeRecMode: 'INTERVIEWER',
     lastFinishedMode: null
 };
 
@@ -439,6 +440,7 @@ function setupSpeechRecognition() {
 
     state.recognition.onstart = () => {
         state.isSpeaking = false;
+        state.activeRecMode = state.micMode;
         displays.vadStatus.textContent = "VAD: Listening";
         displays.vadStatus.classList.remove('hidden');
     };
@@ -458,7 +460,7 @@ function setupSpeechRecognition() {
         }
 
         if (interimTranscript) {
-            updateTranscriptUI(interimTranscript, "", state.micMode);
+            updateTranscriptUI(interimTranscript, "", state.activeRecMode);
             state.isSpeaking = true;
             updateVadUI(true);
         }
@@ -466,17 +468,17 @@ function setupSpeechRecognition() {
         if (finalTranscript) {
             const cleanText = finalTranscript.trim();
             if (cleanText.length > 0) {
-                console.log(`Local Transcription (${state.micMode}):`, cleanText);
+                console.log(`Local Transcription (${state.activeRecMode}):`, cleanText);
 
                 // Log it
                 const timestamp = new Date().toLocaleTimeString();
-                state.transcriptLog.push({ timestamp, text: cleanText, mode: state.micMode });
+                state.transcriptLog.push({ timestamp, text: cleanText, mode: state.activeRecMode });
 
                 // Add final text to UI feed permanently
-                addTranscriptBubble(cleanText, state.micMode);
+                addTranscriptBubble(cleanText, state.activeRecMode);
 
                 // Accumulate text if Interviewer, will send on mic toggle
-                if (state.micMode === 'INTERVIEWER') {
+                if (state.activeRecMode === 'INTERVIEWER') {
                     state.transcriptAccumulator += cleanText + " ";
                 }
             }
@@ -494,6 +496,15 @@ function setupSpeechRecognition() {
     };
 
     state.recognition.onend = () => {
+        // Trigger AI if we just finished an INTERVIEWER chunk and the UI toggled to USER mode
+        if (state.activeRecMode === 'INTERVIEWER' && state.micMode === 'USER') {
+            if (state.transcriptAccumulator.trim().length > 0) {
+                console.log("Triggering AI after capturing trailing INTERVIEWER audio");
+                triggerAI(state.transcriptAccumulator.trim());
+                state.transcriptAccumulator = "";
+            }
+        }
+
         // Automatically restart speech recognition if session is still active
         if (state.isRecording) {
             try {
@@ -577,6 +588,7 @@ async function startSession() {
     // Start
     state.isRecording = true;
     state.micMode = 'INTERVIEWER';
+    state.activeRecMode = 'INTERVIEWER';
     state.lastFinishedMode = null;
 
     try {
@@ -872,6 +884,7 @@ function toggleMic() {
         // First manual start (if stopped completely)
         state.isRecording = true;
         state.micMode = 'INTERVIEWER';
+        state.activeRecMode = 'INTERVIEWER';
         state.lastFinishedMode = null;
 
         if (state.recognition) {
@@ -891,15 +904,8 @@ function toggleMic() {
     state.micMode = (state.micMode === 'INTERVIEWER') ? 'USER' : 'INTERVIEWER';
     updateMicUI();
 
-    // Trigger AI if we just finished Interviewer mode and have accumulated text
-    if (state.lastFinishedMode === 'INTERVIEWER' && state.transcriptAccumulator.trim().length > 0) {
-        console.log("Triggering AI on mode switch from Interviewer to User");
-        triggerAI(state.transcriptAccumulator.trim());
-        state.transcriptAccumulator = ""; // Clear buffer after sending to AI
-    }
-
     // Trigger early push by restarting recognition.
-    // The onend event will restart it instantly since state.isRecording is true.
+    // Trailing audio processing and AI trigger will happen in onend phase
     if (state.recognition) {
         state.recognition.stop();
     }
