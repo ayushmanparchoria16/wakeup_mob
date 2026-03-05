@@ -38,7 +38,8 @@ const state = {
     micMode: 'INTERVIEWER', // 'INTERVIEWER' or 'USER'
     activeRecMode: 'INTERVIEWER',
     lastFinishedMode: null,
-    isNative: false
+    isNative: false,
+    currentInterim: "", // Track latest partial for fallback
 };
 
 // --- DOM Elements ---
@@ -560,12 +561,14 @@ async function setupNativeSpeechRecognition() {
 
 function handleTranscriptionOutput(finalT, interimT) {
     if (interimT) {
+        state.currentInterim = interimT; // Always keep latest partial
         updateTranscriptUI(interimT, "", state.activeRecMode);
         state.isSpeaking = true;
         updateVadUI(true);
     }
 
     if (finalT) {
+        state.currentInterim = ""; // Clear interim once finalized
         const cleanText = finalT.trim();
         if (cleanText.length > 0) {
             console.log(`Local Transcription (${state.activeRecMode}):`, cleanText);
@@ -591,14 +594,22 @@ function handleTranscriptionOutput(finalT, interimT) {
 async function handleSpeechEnd() {
     // Trigger AI if we just finished an INTERVIEWER chunk and the UI toggled to USER mode
     if (state.activeRecMode === 'INTERVIEWER' && state.micMode === 'USER') {
-        const textToTrigger = state.transcriptAccumulator.trim();
+        let textToTrigger = state.transcriptAccumulator.trim();
+
+        // Fallback: If no final segments were captured, use the last interim result
+        if (!textToTrigger && state.currentInterim.trim()) {
+            console.log("Using interim fallback for AI trigger");
+            textToTrigger = state.currentInterim.trim();
+        }
+
         if (textToTrigger.length > 0) {
-            console.log("Triggering AI after capturing trailing INTERVIEWER audio:", textToTrigger);
+            console.log("Triggering AI after capturing interviewer audio:", textToTrigger);
             showToast("AI Processing Question...", 2000);
             await triggerAI(textToTrigger);
             state.transcriptAccumulator = "";
+            state.currentInterim = ""; // Reset
         } else {
-            console.warn("Speech ended but transcriptAccumulator was empty.");
+            console.warn("Speech ended but no text was captured for AI.");
         }
     }
 }
@@ -1014,7 +1025,7 @@ async function toggleMic() {
             await SpeechRecognition.stop();
             // Crucial: Wait long enough for the native engine to push the last segmentResults
             // and for handleTranscriptionOutput to update state.transcriptAccumulator
-            await new Promise(r => setTimeout(r, 450));
+            await new Promise(r => setTimeout(r, 600));
 
             await handleSpeechEnd();
 
@@ -1024,7 +1035,8 @@ async function toggleMic() {
                 await SpeechRecognition.start({
                     language: 'en-US',
                     partialResults: true,
-                    popup: false
+                    popup: false,
+                    allowForSilence: 1500 // Encourage segmentResults on Android
                 });
             }
         } catch (e) {
