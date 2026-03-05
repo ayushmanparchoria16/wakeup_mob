@@ -509,9 +509,8 @@ async function setupSpeechRecognition() {
     };
 
     state.recognition.onend = () => {
-        handleSpeechEnd();
-
-        // Automatically restart speech recognition if session is still active
+        // DON'T call handleSpeechEnd here anymore to keep one bubble per turn
+        // Just restart if we are still recording
         if (state.isRecording) {
             try {
                 setTimeout(() => {
@@ -561,6 +560,14 @@ async function setupNativeSpeechRecognition() {
     SpeechRecognition.addListener('listeningState', (event) => {
         console.log("Native Listening State Update:", event.status);
         if (event.status === 'stopped' && state.isRecording) {
+            // CRITICAL: If we have an unfinalized partial, save it before restarting
+            if (state.currentInterim && state.currentInterim.trim().length > 0) {
+                console.log("Saving unfinalized text before native restart:", state.currentInterim);
+                state.currentTurnBuffer += state.currentInterim.trim() + " ";
+                state.currentInterim = ""; // Prevent double-adding
+                updateTranscriptUI(state.currentTurnBuffer, "", state.activeRecMode);
+            }
+
             console.log("Native Speech stopped while recording. restarting...");
             setTimeout(async () => {
                 if (state.isRecording) {
@@ -569,11 +576,11 @@ async function setupNativeSpeechRecognition() {
                             language: 'en-US',
                             partialResults: true,
                             popup: false,
-                            allowForSilence: 3000 // Higher threshold for pauses
+                            allowForSilence: 5000 // 5 seconds breathing room
                         });
                     } catch (e) { console.warn("Native auto-restart failed:", e); }
                 }
-            }, 100);
+            }, 60);
         }
     });
 
