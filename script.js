@@ -396,6 +396,21 @@ function setLoading(btn, isLoading) {
 
 async function setupMobileFriendlyAudio() {
     try {
+        state.isNative = window.Capacitor && window.Capacitor.isNativePlatform();
+
+        // 1. Initialize Speech Engines (Web or Native with Polling)
+        await setupSpeechRecognition();
+
+        // On Android Native, skip getUserMedia/Visualizer if it conflicts with Speech
+        if (state.isNative) {
+            console.log("Android Native: Skipping getUserMedia to avoid mic conflict");
+            displays.vadStatus.textContent = "VAD: Ready (Native)";
+            displays.vadStatus.classList.remove('hidden');
+            showToast("Audio Ready (Native Mode)");
+            return true;
+        }
+
+        // 0. Get Stream for Visualizer ONLY (we don't send this to AI)
         state.stream = await navigator.mediaDevices.getUserMedia({
             audio: {
                 echoCancellation: true,
@@ -412,9 +427,6 @@ async function setupMobileFriendlyAudio() {
         state.analyser.fftSize = 256;
         source.connect(state.analyser);
 
-        // 2. Setup Web Speech API for local transcription
-        setupSpeechRecognition();
-
         // 3. Start our custom visualizer loop
         startVisualizerLoop();
 
@@ -425,29 +437,33 @@ async function setupMobileFriendlyAudio() {
 
     } catch (e) {
         console.error("Audio Setup Failed:", e);
-        showToast("Audio Access Denied: " + e.message);
+        showToast("Audio Access Denied: " + (e.message || e));
         return false;
     }
 }
 
-function setupSpeechRecognition() {
+let capacitorChecks = 0; // Global counter for Capacitor checks
+
+async function setupSpeechRecognition() {
     // Detect environment
     state.isNative = window.Capacitor && window.Capacitor.isNativePlatform();
 
-    console.log("Environment Check - isNative:", state.isNative);
-    if (window.Capacitor) {
-        console.log("Capacitor Object Found");
-    }
-
     if (state.isNative) {
-        showToast("Android Environment Detected", 2000);
-        setupNativeSpeechRecognition();
-        return;
+        console.log("Capacitor Native Platform Active");
+        return await setupNativeSpeechRecognition();
     }
 
+    if (capacitorChecks < 15) {
+        capacitorChecks++;
+        // Use a Promise to make this "awaitable"
+        await new Promise(r => setTimeout(r, 400));
+        return await setupSpeechRecognition();
+    }
+
+    console.log("Using Web Speech API Fallback");
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-        showToast("Speech Recognition not supported in this browser. Please use Chrome or Edge.");
+        showToast("Speech Recognition not supported in this browser.");
         return;
     }
 
