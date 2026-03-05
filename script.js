@@ -507,7 +507,6 @@ async function setupSpeechRecognition() {
         if (event.error === 'not-allowed') {
             showToast("Microphone access denied for Speech Recognition.");
         } else if (event.error === 'no-speech') {
-            // Silently handle no-speech to avoid cluttering UI, but log for debug
             console.warn("No speech detected by recognition engine.");
         } else if (event.error === 'network') {
             showToast("Network error in Speech Recognition. Please check your connection.");
@@ -515,8 +514,29 @@ async function setupSpeechRecognition() {
     };
 
     state.recognition.onend = () => {
-        // Just restart if we are still recording and NOT currently transitioning
-        if (state.isRecording && !state.isTransitioning) {
+        console.log("Web Speech Recognition End. Transitioning:", state.isTransitioning, "Recording:", state.isRecording);
+
+        // CRITICAL: If we are transitioning, handle the end of the turn
+        if (state.isTransitioning) {
+            // Save any pending interim before switching
+            if (state.currentInterim && state.currentInterim.trim().length > 0) {
+                state.currentTurnBuffer += state.currentInterim.trim() + " ";
+                state.currentInterim = "";
+            }
+
+            handleSpeechEnd();
+            state.isTransitioning = false;
+
+            if (state.isRecording) {
+                state.activeRecMode = state.micMode;
+                console.log("Starting next turn for mode:", state.activeRecMode);
+                try { state.recognition.start(); } catch (e) { console.error("Web Restart Fail:", e); }
+            }
+            return;
+        }
+
+        // Standard auto-restart if we are still recording
+        if (state.isRecording) {
             try {
                 setTimeout(() => {
                     if (state.isRecording && !state.isNative && !state.isTransitioning) {
@@ -524,7 +544,7 @@ async function setupSpeechRecognition() {
                     }
                 }, 100);
             } catch (e) { }
-        } else if (!state.isRecording) {
+        } else {
             displays.vadStatus.textContent = "VAD: Stopped";
         }
     };
@@ -566,28 +586,52 @@ async function setupNativeSpeechRecognition() {
     // We restart it automatically if state.isRecording is still true.
     SpeechRecognition.addListener('listeningState', (event) => {
         console.log("Native Listening State Update:", event.status);
-        if (event.status === 'stopped' && state.isRecording && !state.isTransitioning) {
-            // CRITICAL: If we have an unfinalized partial, save it before restarting
+
+        if (event.status === 'stopped' && state.isRecording) {
+            // CRITICAL: If we have an unfinalized partial, save it before any restart or switch
             if (state.currentInterim && state.currentInterim.trim().length > 0) {
-                console.log("Saving unfinalized text before native restart:", state.currentInterim);
+                console.log("Saving unfinalized text:", state.currentInterim);
                 state.currentTurnBuffer += state.currentInterim.trim() + " ";
                 state.currentInterim = "";
                 updateTranscriptUI(state.currentTurnBuffer, "", state.activeRecMode);
             }
 
-            console.log("Native Speech stopped while recording. restarting...");
-            setTimeout(async () => {
-                if (state.isRecording && !state.isTransitioning) {
+            if (state.isTransitioning) {
+                console.log("Native turn end logic triggering...");
+                handleSpeechEnd();
+                state.isTransitioning = false;
+
+                // Start next turn
+                state.activeRecMode = state.micMode;
+                console.log(`Starting Native session for ${state.activeRecMode} turn...`);
+                showToast(state.activeRecMode === 'USER' ? "Recording You" : "Recording Interviewer", 2000);
+
+                setTimeout(async () => {
                     try {
                         await SpeechRecognition.start({
                             language: 'en-US',
                             partialResults: true,
                             popup: false,
-                            allowForSilence: 40000 // 40 seconds Always-On
+                            allowForSilence: 40000
                         });
-                    } catch (e) { console.warn("Native auto-restart failed:", e); }
-                }
-            }, 60);
+                    } catch (e) { console.warn("Native start after transition failed:", e); }
+                }, 100);
+            } else {
+                // Regular auto-restart for silence timeout
+                console.log("Native Speech stopped (silence). restarting...");
+                setTimeout(async () => {
+                    if (state.isRecording && !state.isTransitioning) {
+                        try {
+                            await SpeechRecognition.start({
+                                language: 'en-US',
+                                partialResults: true,
+                                popup: false,
+                                allowForSilence: 40000
+                            });
+                        } catch (e) { console.warn("Native auto-restart failed:", e); }
+                    }
+                }, 60);
+            }
         }
     });
 
@@ -1061,27 +1105,7 @@ async function toggleMic() {
         try {
             state.isTransitioning = true; // Block auto-restart loop
             await SpeechRecognition.stop();
-            // Crucial: Wait long enough for the native engine to push the last segmentResults
-            // and for handleTranscriptionOutput to update state.transcriptAccumulator
-            await new Promise(r => setTimeout(r, 600));
-
-            // DON'T await handleSpeechEnd - let AI trigger in background
-            // so we can start the next mic turn immediately
-            handleSpeechEnd();
-
-            if (state.isRecording) {
-                state.activeRecMode = state.micMode; // Sync with new mode ('USER' or 'INTERVIEWER')
-                console.log(`Starting Native session for ${state.activeRecMode} turn...`);
-                showToast(state.activeRecMode === 'USER' ? "Recording You" : "Recording Interviewer", 2000);
-
-                await SpeechRecognition.start({
-                    language: 'en-US',
-                    partialResults: true,
-                    popup: false,
-                    allowForSilence: 40000 // 40 seconds Always-On
-                });
-                state.isTransitioning = false; // Re-enable auto-restart listener
-            }
+            // Turn switch logic continues in the 'listeningState' listener (stopped status)
         } catch (e) {
             console.error("Native transition error:", e);
             state.isTransitioning = false;
@@ -1089,17 +1113,7 @@ async function toggleMic() {
     } else if (state.recognition) {
         state.isTransitioning = true;
         state.recognition.stop();
-        // For web, handleSpeechEnd must be called once the recognition actually stops
-        // or we can call it here if we assume the buffer is ready.
-        // Let's call it here for immediate response like native does.
-        setTimeout(() => {
-            handleSpeechEnd();
-            state.isTransitioning = false;
-            if (state.isRecording) {
-                state.activeRecMode = state.micMode;
-                try { state.recognition.start(); } catch (e) { }
-            }
-        }, 100);
+        // Turn switch logic continues in the 'onend' handler
     }
 }
 
