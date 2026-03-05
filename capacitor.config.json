@@ -1,0 +1,6 @@
+{
+    "appId": "com.wakeupai.app",
+    "appName": "Wakeup AI",
+    "webDir": "f:/TeraBoxDownload/Ayushman docs/python projects/wakeup_phone",
+    "bundledWebRuntime": false
+}

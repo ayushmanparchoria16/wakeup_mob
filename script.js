@@ -1314,18 +1314,11 @@ async function toggleMic() {
             state.isTransitioning = false;
         }
     } else if (state.isElectron && state.asrMode === 'LOCAL') {
-        state.isTransitioning = true;
-        window.electronAPI.stopAsr();
-        // Emulate a stop for event-driven logic to hit handleSpeechEnd
-        // Wait for potential final buffer
-        setTimeout(() => {
-            handleSpeechEnd();
-            state.isTransitioning = false;
-            if (state.isRecording) {
-                state.activeRecMode = state.micMode;
-                window.electronAPI.startAsr();
-            }
-        }, 300);
+        // PERF: Do NOT stop/start the sidecar. It handles its own audio loop.
+        // Just finalize the current turn and switch UI.
+        handleSpeechEnd();
+        state.activeRecMode = state.micMode;
+        console.log("Electron: Turn switched to", state.activeRecMode);
     } else if (state.recognition) {
         state.isTransitioning = true;
         state.recognition.stop();
@@ -1529,6 +1522,10 @@ function endSession() {
 
     if (state.recognition) {
         state.recognition.stop();
+    }
+
+    if (state.isElectron && state.asrMode === 'LOCAL') {
+        window.electronAPI.stopAsr();
     }
 
     // Stop all media tracks to release the microphone
