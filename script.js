@@ -123,7 +123,6 @@ function init() {
     if (buttons.quickReplyMeeting) buttons.quickReplyMeeting.addEventListener('click', quickReply);
     buttons.endMeeting.addEventListener('click', endSession);
     buttons.micToggle.addEventListener('click', toggleMic);
-    if (buttons.screenshot) buttons.screenshot.addEventListener('click', captureScreenshotAndSolve);
     buttons.download.addEventListener('click', downloadTranscript);
     buttons.clearExit.addEventListener('click', clearAndExit);
 
@@ -1287,22 +1286,11 @@ window.addEventListener('load', init);
 
 // --- Screenshot Logic ---
 
-async function captureScreenshotAndSolve() {
-    if (!window.electronAPI || !window.electronAPI.takeScreenshot) {
-        showToast("Screenshot only available in Desktop App");
+window.receiveDesktopScreenshot = async function (dataUrl) {
+    if (!dataUrl) {
+        showToast("Capture failed", 3000);
         return;
     }
-    showToast("Capturing screen...");
-    try {
-        await window.electronAPI.takeScreenshot();
-    } catch (err) {
-        console.error("Screenshot failed", err);
-        showToast("Failed to capture screen");
-    }
-}
-
-window.receiveDesktopScreenshot = async function (dataUrl) {
-    if (!dataUrl) return;
     showToast("Analyzing screenshot...", 5000);
 
     try {
@@ -1324,16 +1312,37 @@ window.receiveDesktopScreenshot = async function (dataUrl) {
 
         state.chatHistory.push({ role: "user", content: "[User sent a screenshot]" });
 
-        const response = await puter.ai.chat(messages);
-        const aiText = response.toString();
+        // Specify gpt-4o for vision capabilities in Puter
+        const response = await puter.ai.chat(messages, { model: 'gpt-4o', stream: true });
 
-        state.aiLog.push(aiText);
-        state.chatHistory.push({ role: "assistant", content: aiText });
-        renderAiFeed();
+        let fullResponse = "";
+        const aiMessageId = 'ai-' + Date.now();
+        const aiFeed = displays.aiFeed;
+
+        // Remove welcome text if first dynamic message
+        if (aiFeed.querySelector('.ai-welcome')) {
+            aiFeed.innerHTML = '';
+        }
+
+        const aiCard = document.createElement('div');
+        aiCard.className = 'ai-card';
+        aiCard.id = aiMessageId;
+        aiCard.innerHTML = '<div class="loader-dots"><span></span><span></span><span></span></div>';
+        aiFeed.appendChild(aiCard);
+        scrollToBottom(aiFeed);
+
+        for await (const part of response) {
+            fullResponse += part?.text || "";
+            aiCard.innerHTML = formatAIResponse(fullResponse);
+            scrollToBottom(aiFeed);
+        }
+
+        state.aiLog.push(fullResponse);
+        state.chatHistory.push({ role: "assistant", content: fullResponse });
         showToast("Solution generated!");
     } catch (err) {
         console.error("Vision AI failed", err);
-        showToast("Failed to analyze image");
+        showToast("Vision Error: " + err.message);
     }
 };
 
