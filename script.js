@@ -1325,16 +1325,27 @@ window.receiveDesktopScreenshot = async function (dataUrl) {
         }
 
         const aiCard = document.createElement('div');
-        aiCard.className = 'ai-card';
+        aiCard.className = 'ai-message vision-card'; // Use established class + vision modifier
         aiCard.id = aiMessageId;
         aiCard.innerHTML = '<div class="loader-dots"><span></span><span></span><span></span></div>';
         aiFeed.appendChild(aiCard);
-        scrollToBottom(aiFeed);
+
+        // Smart Scroll: Snap the top of the new card to the top of the feed container
+        const container = displays.aiFeed;
+        const cardTop = aiCard.offsetTop;
+        container.scrollTo({ top: cardTop - 20, behavior: 'smooth' });
+
+        let hasScrolledInitial = false;
 
         for await (const part of response) {
             fullResponse += part?.text || "";
             aiCard.innerHTML = parseMarkdown(fullResponse);
-            scrollToBottom(aiFeed);
+
+            // Re-snap to top periodically for the first few chunks to ensure it's in view
+            if (!hasScrolledInitial && fullResponse.length > 20) {
+                container.scrollTo({ top: cardTop - 20, behavior: 'smooth' });
+                hasScrolledInitial = true;
+            }
         }
 
         state.aiLog.push(fullResponse);

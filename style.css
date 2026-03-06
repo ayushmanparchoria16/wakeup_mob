@@ -562,6 +562,16 @@ input:focus {
     font-weight: bold;
 }
 
+.ai-message.vision-card {
+    border-left: 4px solid var(--accent);
+    background: rgba(6, 182, 212, 0.05);
+}
+
+.ai-message.vision-card::before {
+    content: 'VISION ANALYSIS';
+    background: var(--accent);
+}
+
 /* AI Markdown Styles */
 .ai-message ul,
 .ai-message ol {
