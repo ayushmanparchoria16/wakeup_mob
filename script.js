@@ -1303,14 +1303,15 @@ window.receiveDesktopScreenshot = async function (dataUrl) {
             },
             {
                 role: "user",
-                content: visionPrompt,
-                images: [dataUrl] // Puter AI standard for images in some contexts, or we use standard OpenAI format if it supports it
+                content: [
+                    { type: "text", text: visionPrompt },
+                    { type: "image_url", image_url: { url: dataUrl } }
+                ]
             }
         ];
 
         state.chatHistory.push({ role: "user", content: "[User sent a screenshot]" });
 
-        // Some Puter versions use images: [url] in the options or messages
         const response = await puter.ai.chat(messages, { model: 'gpt-4o', stream: true });
 
         let fullResponse = "";
