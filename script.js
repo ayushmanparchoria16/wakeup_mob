@@ -33,11 +33,13 @@ const state = {
     lastAiCallTime: 0,
 
     transcriptAccumulator: "",
+    currentSessionBuffer: "", // NEW: Persistent buffer for the current session
     currentUser: null,
 
     micMode: 'INTERVIEWER', // 'INTERVIEWER' or 'USER'
     activeRecMode: 'INTERVIEWER',
-    lastFinishedMode: null
+    lastFinishedMode: null,
+    isAwaitingFinal: false
 };
 
 // --- DOM Elements ---
@@ -450,7 +452,6 @@ function setupSpeechRecognition() {
         let interimTranscript = '';
         let finalSegments = [];
 
-        // Correctly iterate using resultIndex to only process NEW results
         for (let i = event.resultIndex; i < event.results.length; ++i) {
             const transcript = event.results[i][0].transcript;
             if (event.results[i].isFinal) {
@@ -460,28 +461,26 @@ function setupSpeechRecognition() {
             }
         }
 
-        // 1. Process Final Segments (Permanent Additions)
+        // 1. Process Final Segments
         finalSegments.forEach(segment => {
             if (segment.length > 0) {
-                console.log(`Local Transcription (${state.activeRecMode}):`, segment);
                 const timestamp = new Date().toLocaleTimeString();
                 state.transcriptLog.push({ timestamp, text: segment, mode: state.activeRecMode });
 
-                addTranscriptBubble(segment, state.activeRecMode);
+                // Accumulate in the global buffer
+                state.currentSessionBuffer += segment + " ";
 
-                if (state.activeRecMode === 'INTERVIEWER') {
-                    state.transcriptAccumulator += segment + " ";
-                }
+                // Also update the UI feed
+                addTranscriptBubble(segment, state.activeRecMode);
             }
         });
 
-        // 2. Update Interim UI (Flicker-Free)
+        // 2. Update Interim UI
         if (interimTranscript.trim().length > 0) {
             updateTranscriptUI("", interimTranscript.trim(), state.activeRecMode);
             state.isSpeaking = true;
             updateVadUI(true);
         } else if (finalSegments.length > 0) {
-            // Signal speaking stopped only if loop produced NO interims
             state.isSpeaking = false;
             updateVadUI(false);
         }
@@ -893,16 +892,16 @@ function toggleMic() {
     // Toggle the active mode
     const oldMode = state.micMode;
     state.micMode = (oldMode === 'INTERVIEWER') ? 'USER' : 'INTERVIEWER';
-    state.activeRecMode = state.micMode; // Update capture mode instantly
+    state.activeRecMode = state.micMode;
     updateMicUI();
 
-    // Hot Switch: Trigger AI if we just finished an INTERVIEWER segment
-    // We don't stop the recognition anymore to keep it continuous/fast
+    // Submission Logic: If we switched from INTERVIEWER to USER, we submit the buffer
     if (oldMode === 'INTERVIEWER' && state.micMode === 'USER') {
-        if (state.transcriptAccumulator.trim().length > 0) {
-            console.log("Triggering AI instantly during mic toggle");
-            triggerAI(state.transcriptAccumulator.trim());
-            state.transcriptAccumulator = "";
+        const submissionText = state.currentSessionBuffer.trim();
+        if (submissionText.length > 0) {
+            console.log("Triggering AI from Continuous Buffer:", submissionText);
+            triggerAI(submissionText);
+            state.currentSessionBuffer = ""; // Clear buffer after submission
         }
     }
 }
