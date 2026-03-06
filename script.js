@@ -448,40 +448,40 @@ function setupSpeechRecognition() {
         if (!state.isRecording) return;
 
         let interimTranscript = '';
-        let finalTranscript = '';
+        let finalSegments = [];
 
+        // Correctly iterate using resultIndex to only process NEW results
         for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const transcript = event.results[i][0].transcript;
             if (event.results[i].isFinal) {
-                finalTranscript += event.results[i][0].transcript;
+                finalSegments.push(transcript.trim());
             } else {
-                interimTranscript += event.results[i][0].transcript;
+                interimTranscript += transcript;
             }
         }
 
-        if (interimTranscript) {
-            updateTranscriptUI(interimTranscript, "", state.activeRecMode);
-            state.isSpeaking = true;
-            updateVadUI(true);
-        }
-
-        if (finalTranscript) {
-            const cleanText = finalTranscript.trim();
-            if (cleanText.length > 0) {
-                console.log(`Local Transcription (${state.activeRecMode}):`, cleanText);
-
-                // Log it
+        // 1. Process Final Segments (Permanent Additions)
+        finalSegments.forEach(segment => {
+            if (segment.length > 0) {
+                console.log(`Local Transcription (${state.activeRecMode}):`, segment);
                 const timestamp = new Date().toLocaleTimeString();
-                state.transcriptLog.push({ timestamp, text: cleanText, mode: state.activeRecMode });
+                state.transcriptLog.push({ timestamp, text: segment, mode: state.activeRecMode });
 
-                // Add final text to UI feed permanently
-                addTranscriptBubble(cleanText, state.activeRecMode);
+                addTranscriptBubble(segment, state.activeRecMode);
 
-                // Accumulate text if Interviewer, will send on mic toggle
                 if (state.activeRecMode === 'INTERVIEWER') {
-                    state.transcriptAccumulator += cleanText + " ";
+                    state.transcriptAccumulator += segment + " ";
                 }
             }
+        });
 
+        // 2. Update Interim UI (Flicker-Free)
+        if (interimTranscript.trim().length > 0) {
+            updateTranscriptUI("", interimTranscript.trim(), state.activeRecMode);
+            state.isSpeaking = true;
+            updateVadUI(true);
+        } else if (finalSegments.length > 0) {
+            // Signal speaking stopped only if loop produced NO interims
             state.isSpeaking = false;
             updateVadUI(false);
         }
@@ -509,7 +509,7 @@ function setupSpeechRecognition() {
             try {
                 setTimeout(() => {
                     if (state.isRecording) state.recognition.start();
-                }, 100);
+                }, 10); // Reduced delay for faster restart
             } catch (e) {
                 // Ignore if it's already started
             }
@@ -947,16 +947,25 @@ function addTranscriptBubble(text, mode = 'INTERVIEWER') {
     let tempEl = document.getElementById('temp-transcript');
     if (tempEl) tempEl.remove();
 
-    const p = document.createElement('p');
-    p.className = 'transcript-segment final';
-    if (mode === 'USER') p.classList.add('user-segment');
+    const feed = displays.transcriptFeed;
+    const lastItem = feed.lastElementChild;
 
-    const prefix = mode === 'USER' ? 'You' : 'Inv';
-    const strongTag = mode === 'USER' ? `<strong style="color: #64ffda;">${prefix}:</strong>` : `<strong>${prefix}:</strong>`;
+    // Smooth Appending: If same mode and last child is final, append instead of new bubble
+    if (lastItem && lastItem.dataset.mode === mode && lastItem.classList.contains('final')) {
+        lastItem.innerHTML += " " + text;
+    } else {
+        const p = document.createElement('p');
+        p.className = 'transcript-segment final';
+        p.dataset.mode = mode;
+        if (mode === 'USER') p.classList.add('user-segment');
 
-    p.innerHTML = `${strongTag} ${text}`;
-    displays.transcriptFeed.appendChild(p);
-    scrollToBottom(displays.transcriptFeed);
+        const prefix = mode === 'USER' ? 'You' : 'Inv';
+        const strongTag = mode === 'USER' ? `<strong style="color: #64ffda;">${prefix}:</strong>` : `<strong>${prefix}:</strong>`;
+
+        p.innerHTML = `${strongTag} ${text}`;
+        feed.appendChild(p);
+    }
+    scrollToBottom(feed);
 }
 
 function updateMicUI() {
