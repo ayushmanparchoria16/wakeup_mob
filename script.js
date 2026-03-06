@@ -5,10 +5,9 @@
 
 // --- Configuration & State ---
 const CONFIG = {
-    // Audio Analysis Settings
-    MIN_DECIBELS: -45, // Threshold for detecting speech
-    SILENCE_DELAY_MS: 1500, // How long to wait in silence before sending audio
-    AUTO_TRIGGER_AI: true, // New: Enable VAD-based auto-flipping of turns
+    // VAD Settings
+    SAMPLE_RATE: 16000,
+    FRAME_SIZE: 512, // 32ms at 16kHz
 };
 
 const state = {
@@ -17,58 +16,30 @@ const state = {
     transcriptLog: [],
     aiLog: [],
     chatHistory: [],
+    recognition: null, // Web Speech API
+    audioContext: null, // For VAD
+    vadWorker: null,
 
-    // Mobile Audio Pipeline
-    audioContext: null,
-    analyser: null,
-    recognition: null,
-    stream: null,
-
-    // VAD Logic Context
-    isSpeaking: false,
+    // VAD Logic
+    isSpeaking: false, // True if VAD detecting speech
     silenceStartTime: 0,
-    analysisInterval: null,
 
     isProcessingAI: false,
     pendingBuffer: "",
     lastAiCallTime: 0,
 
-    transcriptAccumulator: "",
-    currentUser: null,
-
-    micMode: 'INTERVIEWER', // 'INTERVIEWER' or 'USER'
-    activeRecMode: 'INTERVIEWER',
-    lastFinishedMode: null,
-    isNative: false,
-    currentInterim: "", // Track latest partial for fallback
-    currentTurnBuffer: "", // Accumulate all segments for the CURRENT turn
-    transcriptLog: [],
-    chatHistory: [], // {role: 'user'|'assistant', content: ""}
-    isProcessingAI: false,
-    isTransitioning: false, // Prevent auto-restart during turn-switch
-    isElectron: !!(window.electronAPI),
-    asrMode: 'OFF', // 'OFF' | 'LOCAL' | 'WEB' | 'LOCAL_ANDROID'
-    vad: null,
-    vadInitialized: false,
-    asrWorker: null
+    // For "Pause" handling
+    transcriptAccumulator: "", // Accumulates text while speaking + short pauses
 };
 
 // --- DOM Elements ---
 const screens = {
-    auth: document.getElementById('auth-screen'),
-    setup: document.getElementById('setup-screen'),
     meeting: document.getElementById('meeting-screen'),
     end: document.getElementById('end-screen')
 };
 
 const inputs = {
-    topic: document.getElementById('topic-input'),
-    loginEmail: document.getElementById('login-email'),
-    loginPass: document.getElementById('login-password'),
-    regName: document.getElementById('register-name'),
-    regEmail: document.getElementById('register-email'),
-    regPass: document.getElementById('register-password'),
-    forgotEmail: document.getElementById('forgot-email')
+    topic: document.getElementById('topic-input')
 };
 
 const buttons = {
@@ -76,24 +47,12 @@ const buttons = {
     quickReplyMeeting: document.getElementById('quick-reply-meeting-btn'),
     endMeeting: document.getElementById('end-session-btn'),
     micToggle: document.getElementById('mic-toggle-btn'),
-    screenshot: document.getElementById('screenshot-btn'),
     download: document.getElementById('download-btn'),
-    clearExit: document.getElementById('clear-exit-btn'),
-    // Auth buttons
-    tabLogin: document.getElementById('tab-login'),
-    tabReg: document.getElementById('tab-register'),
-    login: document.getElementById('login-btn'),
-    register: document.getElementById('register-btn'),
-    forgotLink: document.getElementById('forgot-password-link'),
-    forgotSubmit: document.getElementById('forgot-btn'),
-    backLogin: document.getElementById('back-to-login-btn'),
-    logout: document.getElementById('logout-link'),
-    switchAccount: document.getElementById('switch-account-link')
+    clearExit: document.getElementById('clear-exit-btn')
 };
 
 const displays = {
     topic: document.getElementById('display-topic'),
-    userName: document.getElementById('user-display-name'),
     transcriptFeed: document.getElementById('transcript-feed'),
     aiFeed: document.getElementById('ai-feed'),
     status: document.getElementById('status-text'),
@@ -101,347 +60,73 @@ const displays = {
     visualizerBars: document.querySelectorAll('.bar'),
     statWords: document.getElementById('stat-words'),
     statInsights: document.getElementById('stat-insights'),
-    toast: document.getElementById('toast'),
-    whisperLoader: document.getElementById('whisper-loader'),
-    whisperProgress: document.getElementById('whisper-progress'),
-    whisperStatusText: document.getElementById('whisper-status-text'),
-    whisperStatusIcon: document.getElementById('whisper-status-icon'),
-    // Forms
-    loginForm: document.getElementById('login-form'),
-    regForm: document.getElementById('register-form'),
-    forgotForm: document.getElementById('forgot-form')
+    toast: document.getElementById('toast')
 };
 
 // --- Initialization ---
 
 function init() {
-    // Check local storage for user
-    const savedUser = localStorage.getItem('wakeup_user');
-    if (savedUser) {
-        try {
-            state.currentUser = JSON.parse(savedUser);
-            displays.userName.textContent = state.currentUser.displayName || state.currentUser.email.split('@')[0];
-            switchScreen('setup');
-        } catch (e) {
-            console.error("Failed to parse user", e);
-            switchScreen('auth');
-        }
-    } else {
-        switchScreen('auth');
-    }
-
-    // Initialize Speech Engines (Web or Native)
-    setupSpeechRecognition();
-
-    // Background pre-download of Whisper model for Mobile (Native or Browser)
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    if (isMobile && !state.isElectron) {
-        console.log("Mobile device detected, prioritizing Local ASR initialization...");
-        state.asrMode = 'LOCAL_ANDROID'; // Pre-set to avoid fallback competition
-        setupAndroidLocalASR();
-    }
-
     // Check protocol
     if (window.location.protocol === 'file:') {
         showToast("⚠️ Run via Local Server to save permissions!");
     }
+
+    console.log("Note: Browser Speech API does not support Speaker Diarization.");
+    showToast("Tip: Use Headphones for best VAD performance!", 5000);
 
     // Event Listeners
     buttons.start.addEventListener('click', startSession);
     if (buttons.quickReplyMeeting) buttons.quickReplyMeeting.addEventListener('click', quickReply);
     buttons.endMeeting.addEventListener('click', endSession);
     buttons.micToggle.addEventListener('click', toggleMic);
-    if (buttons.screenshot) buttons.screenshot.addEventListener('click', captureScreenshotAndSolve);
     buttons.download.addEventListener('click', downloadTranscript);
     buttons.clearExit.addEventListener('click', clearAndExit);
 
-    // Auth Listeners
-    setupAuthListeners();
-
-    if (buttons.switchAccount) {
-        buttons.switchAccount.addEventListener('click', async (e) => {
-            e.preventDefault();
-            showToast("Clearing AI Account data...", 2000);
-
-            try {
-                if (puter.auth.isSignedIn()) {
-                    puter.auth.signOut();
-                }
-            } catch (err) {
-                console.warn("Puter signout failed:", err);
-            }
-
-            // Aggressively clear local and session storage
-            const savedUser = localStorage.getItem('wakeup_user');
-            localStorage.clear();
-            sessionStorage.clear();
-
-            // Restore our user
-            if (savedUser) {
-                localStorage.setItem('wakeup_user', savedUser);
-            }
-
-            // Clear all cookies
-            document.cookie.split(";").forEach((c) => {
-                document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-            });
-
-            setTimeout(() => {
-                showToast("Account data cleared. Please start a session to login again.", 3000);
-                setTimeout(() => {
-                    window.location.reload(true);
-                }, 1500);
-            }, 1000);
-        });
-    }
-
     // Spacebar to toggle mic
     document.addEventListener('keydown', (e) => {
-        if (e.code === 'Space' && e.target.tagName !== 'INPUT' && screens.meeting.classList.contains('active')) {
+        if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
             e.preventDefault();
             toggleMic();
         }
     });
 
-    // 2. Setup Desktop Logic (Electron Bridge)
-    if (state.isElectron && window.electronAPI) {
-        console.log("Electron Environment Detected: Enabling Local ASR hooks");
-        window.electronAPI.onAsrEvent((msg) => handleLocalAsrEvent(msg));
-    }
-}
-
-// --- Auth Logic ---
-function setupAuthListeners() {
-    // Tabs
-    buttons.tabLogin.addEventListener('click', () => {
-        buttons.tabLogin.classList.add('active');
-        buttons.tabReg.classList.remove('active');
-        displays.loginForm.classList.remove('hidden');
-        displays.regForm.classList.add('hidden');
-        displays.forgotForm.classList.add('hidden');
-    });
-
-    buttons.tabReg.addEventListener('click', () => {
-        buttons.tabReg.classList.add('active');
-        buttons.tabLogin.classList.remove('active');
-        displays.regForm.classList.remove('hidden');
-        displays.loginForm.classList.add('hidden');
-        displays.forgotForm.classList.add('hidden');
-    });
-
-    // Forgot Password Flow
-    buttons.forgotLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        displays.loginForm.classList.add('hidden');
-        displays.forgotForm.classList.remove('hidden');
-        buttons.tabLogin.classList.remove('active');
-        buttons.tabReg.classList.remove('active');
-    });
-
-    buttons.backLogin.addEventListener('click', () => {
-        displays.forgotForm.classList.add('hidden');
-        displays.loginForm.classList.remove('hidden');
-        buttons.tabLogin.classList.add('active');
-    });
-
-    // Submit Actions
-    buttons.login.addEventListener('click', handleLogin);
-    buttons.register.addEventListener('click', handleRegister);
-    buttons.logout.addEventListener('click', (e) => {
-        e.preventDefault();
-        handleLogout();
-    });
-    buttons.forgotSubmit.addEventListener('click', handleForgotPassword);
-}
-
-async function handleLogin() {
-    const email = inputs.loginEmail.value.trim();
-    const pass = inputs.loginPass.value;
-
-    if (!email || !pass) return showToast("Please enter email and password");
-
-    setLoading(buttons.login, true);
-
-    try {
-        const params = new URLSearchParams();
-        params.append('action', 'login');
-        params.append('email', email);
-        params.append('password', pass);
-
-        const res = await fetch(GOOGLE_URL, {
-            method: 'POST',
-            body: params,
-            redirect: 'follow'
-        });
-
-        const textData = await res.text();
-        let data;
-        try {
-            data = JSON.parse(textData);
-        } catch (e) {
-            console.error("Raw response:", textData);
-            throw new Error("Invalid JSON response from server");
-        }
-
-        if (data.status === 'success') {
-            state.currentUser = data.user;
-            localStorage.setItem('wakeup_user', JSON.stringify(data.user));
-            displays.userName.textContent = data.user.displayName;
-            switchScreen('setup');
-            showToast("Login successful!");
-        } else {
-            showToast(data.message || "Login failed");
-        }
-    } catch (err) {
-        showToast("Error connecting to server");
-        console.error(err);
-    } finally {
-        setLoading(buttons.login, false);
-    }
-}
-
-async function handleRegister() {
-    const name = inputs.regName.value.trim();
-    const email = inputs.regEmail.value.trim();
-    const pass = inputs.regPass.value;
-
-    if (!email || !pass) return showToast("Email and password required");
-
-    setLoading(buttons.register, true);
-
-    try {
-        const params = new URLSearchParams();
-        params.append('action', 'register');
-        params.append('email', email);
-        params.append('password', pass);
-        params.append('displayName', name || email.split('@')[0]);
-
-        const res = await fetch(GOOGLE_URL, {
-            method: 'POST',
-            body: params,
-            redirect: 'follow'
-        });
-
-        const textData = await res.text();
-        let data;
-        try {
-            data = JSON.parse(textData);
-        } catch (e) {
-            console.error("Raw response:", textData);
-            throw new Error("Invalid JSON response from server");
-        }
-
-        if (data.status === 'success') {
-            showToast("Registration successful! Please login.");
-            buttons.tabLogin.click(); // Switch to login tab
-            inputs.loginEmail.value = email; // Pre-fill email
-        } else {
-            showToast(data.message || "Registration failed");
-        }
-    } catch (err) {
-        showToast("Error connecting to server");
-        console.error(err);
-    } finally {
-        setLoading(buttons.register, false);
-    }
-}
-
-async function handleForgotPassword() {
-    const email = inputs.forgotEmail.value.trim();
-    if (!email) return showToast("Please enter your email");
-
-    setLoading(buttons.forgotSubmit, true);
-
-    try {
-        const params = new URLSearchParams();
-        params.append('action', 'forgotPassword');
-        params.append('email', email);
-
-        const res = await fetch(GOOGLE_URL, {
-            method: 'POST',
-            body: params,
-            redirect: 'follow'
-        });
-
-        const textData = await res.text();
-        let data;
-        try {
-            data = JSON.parse(textData);
-        } catch (e) {
-            console.error("Raw response:", textData);
-            throw new Error("Invalid JSON response from server");
-        }
-
-        if (data.status === 'success') {
-            showToast(data.message || "A temporary password was sent.", 4000);
-            buttons.backLogin.click();
-        } else {
-            // Still show a generic message for security if desired, or error.
-            showToast(data.message || "If this email exists, a reset link was sent.", 4000);
-            buttons.backLogin.click();
-        }
-    } catch (err) {
-        showToast("Error connecting to server");
-        console.error(err);
-    } finally {
-        setLoading(buttons.forgotSubmit, false);
-    }
-}
-
-async function handleLogout() {
-    if (puter.auth.isSignedIn()) {
-        puter.auth.signOut();
-    }
-
-    if (state.currentUser) {
-        try {
-            const params = new URLSearchParams();
-            params.append('action', 'logout');
-            params.append('email', state.currentUser.email);
-
-            await fetch(GOOGLE_URL, {
-                method: 'POST',
-                body: params,
-                redirect: 'follow'
-            });
-        } catch (e) { }
-    }
-
-    state.currentUser = null;
-    localStorage.removeItem('wakeup_user');
-    inputs.topic.value = '';
-    switchScreen('auth');
-    showToast("Logged out successfully");
-}
-
-function setLoading(btn, isLoading) {
-    if (isLoading) {
-        btn.classList.add('btn-loading');
-    } else {
-        btn.classList.remove('btn-loading');
+    // Check VAD support
+    if (!window.Worker) {
+        showToast("Web Workers not supported. VAD will not function.");
     }
 }
 
 // --- Audio & VAD Setup ---
 
-async function setupMobileFriendlyAudio() {
+async function setupAudioProcessing() {
     try {
-        state.isNative = window.Capacitor && window.Capacitor.isNativePlatform();
+        state.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+            sampleRate: CONFIG.SAMPLE_RATE,
+            latencyHint: 'interactive'
+        });
 
-        // 1. Initialize Speech Engines (Web or Native with Polling)
-        await setupSpeechRecognition();
+        // Mobile browsers often ignore the requested sampleRate in the constructor
+        const actualRate = state.audioContext.sampleRate;
+        console.log(`Audio Context Created. Requested: ${CONFIG.SAMPLE_RATE}, Actual: ${actualRate}`);
 
-        // On Android Native, skip getUserMedia/Visualizer if it conflicts with Speech
-        if (state.isNative) {
-            console.log("Android Native: Skipping getUserMedia to avoid mic conflict");
-            displays.vadStatus.textContent = "VAD: Ready (Native)";
-            displays.vadStatus.classList.remove('hidden');
-            showToast("Audio Ready (Native Mode)");
-            return true;
+        // Load VAD Worker
+        try {
+            state.vadWorker = new Worker('./vad_worker.js');
+            state.vadWorker.onerror = (err) => {
+                console.error("VAD Worker Error:", err);
+                showToast("Error loading VAD Worker. Check console.");
+            };
+        } catch (workerErr) {
+            console.error("Worker Creation Failed:", workerErr);
+            showToast("Failed to initialize VAD. Browser might block workers.");
+            return false;
         }
 
-        // 0. Get Stream for Visualizer ONLY (we don't send this to AI)
-        state.stream = await navigator.mediaDevices.getUserMedia({
+        state.vadWorker.onmessage = handleVadMessage;
+        state.vadWorker.postMessage({ type: 'INIT' });
+
+        // Get Stream
+        const stream = await navigator.mediaDevices.getUserMedia({
             audio: {
                 echoCancellation: true,
                 noiseSuppression: true,
@@ -449,480 +134,181 @@ async function setupMobileFriendlyAudio() {
             }
         });
 
-        // 1. Setup AudioContext for visualizer
-        state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const source = state.audioContext.createMediaStreamSource(state.stream);
-        state.analyser = state.audioContext.createAnalyser();
-        state.analyser.minDecibels = CONFIG.MIN_DECIBELS;
-        state.analyser.fftSize = 256;
-        source.connect(state.analyser);
+        const source = state.audioContext.createMediaStreamSource(stream);
 
-        // 3. Start our custom visualizer loop
-        startVisualizerLoop();
+        // Worklet or ScriptProcessor (simpler for single file)
+        const processor = state.audioContext.createScriptProcessor(CONFIG.FRAME_SIZE, 1, 1);
 
-        // 4. Initialize Web VAD (Advanced Detection)
-        await setupWebVAD();
+        source.connect(processor);
+        processor.connect(state.audioContext.destination);
 
-        // 5. Initialize Local ASR for Android (Optional/Background Load)
-        if (state.isNative && !state.isElectron) {
-            setupAndroidLocalASR();
-        }
+        processor.onaudioprocess = (e) => {
+            if (!state.isRecording) return;
 
-        showToast("Audio Ready!");
-        displays.vadStatus.textContent = "VAD: Ready";
-        displays.vadStatus.classList.remove('hidden');
+            const inputData = e.inputBuffer.getChannelData(0);
+
+            // --- SMART DOWNSAMPLER ---
+            // "The Funnel": If audio is too fast (e.g. 48k on mobile), slow it down to 16k
+            let vadInput = inputData;
+
+            if (actualRate !== CONFIG.SAMPLE_RATE) {
+                vadInput = downsampleBuffer(inputData, actualRate, CONFIG.SAMPLE_RATE);
+            }
+
+            state.vadWorker.postMessage({
+                type: 'PROCESS',
+                audio: vadInput
+            });
+
+            // Visualize
+            simulateVisualizerVolume(inputData);
+        };
+
+        // Notify debug
+        showToast(`Audio Ready: ${actualRate}Hz`);
         return true;
 
     } catch (e) {
         console.error("Audio Setup Failed:", e);
-        showToast("Audio Access Denied: " + (e.message || e));
+        showToast("Audio Access Denied: " + e.message);
         return false;
     }
 }
 
-let capacitorChecks = 0; // Global counter for Capacitor checks
-
-async function setupWebVAD() {
-    if (state.vadInitialized || typeof vad === 'undefined') return;
-
-    try {
-        console.log("Initializing Web VAD (Silero)...");
-        state.vad = await vad.MicVAD.new({
-            // Use the existing stream from visualizer to avoid mic conflict
-            stream: state.stream,
-            minSpeechFrames: 5,
-            positiveSpeechThreshold: 0.8,
-            negativeSpeechThreshold: 0.4,
-            onSpeechStart: () => {
-                console.log("VAD: Speech Started");
-                updateVadUI(true);
-                state.isSpeaking = true;
-            },
-            onSpeechEnd: (audio) => {
-                console.log("VAD: Speech Ended");
-                updateVadUI(false);
-                state.isSpeaking = false;
-
-                // If we are in the meeting and recording, use VAD to force turn switch if needed
-                if (state.isRecording && !state.isElectron) {
-                    handleVADSpeechEnd(audio);
-                }
-            },
-        });
-
-        state.vadInitialized = true;
-        console.log("Web VAD Initialized successfully.");
-    } catch (e) {
-        console.error("Web VAD Init failed:", e);
+// Helper: The "Funnel" that shrinks audio
+function downsampleBuffer(buffer, sampleRate, outSampleRate) {
+    if (outSampleRate === sampleRate) {
+        return buffer;
     }
-}
+    if (outSampleRate > sampleRate) {
+        // Upsampling not supported/needed
+        return buffer;
+    }
+    const sampleRateRatio = sampleRate / outSampleRate;
+    const newLength = Math.round(buffer.length / sampleRateRatio);
+    const result = new Float32Array(newLength);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
 
-async function setupAndroidLocalASR() {
-    if (state.asrWorker) return;
-
-    console.log("Setting up Android Local ASR Worker...");
-    state.asrWorker = new Worker('asr-worker.js', { type: 'module' });
-
-    state.asrWorker.onmessage = (e) => {
-        const { status, text, message, detail } = e.data;
-
-        if (status === 'progress') {
-            // Show loader only if it's a real loading event
-            displays.whisperLoader.classList.remove('hidden');
-            if (detail.progress !== undefined) {
-                displays.whisperProgress.style.width = detail.progress + '%';
-                displays.whisperStatusText.textContent = `Loading ${detail.file}: ${Math.round(detail.progress)}%`;
-            }
-        } else if (status === 'ready') {
-            console.log("Local ASR Ready:", message);
-            state.asrMode = 'LOCAL_ANDROID';
-
-            // Show success state
-            displays.whisperLoader.classList.remove('hidden');
-            displays.whisperProgress.style.width = '100%';
-            displays.whisperStatusIcon.textContent = 'check_circle';
-            displays.whisperStatusIcon.classList.add('success');
-            displays.whisperStatusText.textContent = 'Whisper Cached & Ready';
-
-            // Auto-hide after 3 seconds
-            setTimeout(() => {
-                displays.whisperLoader.classList.add('hidden');
-            }, 3000);
-
-        } else if (status === 'transcript') {
-            handleTranscriptionOutput(text, "");
-        } else if (status === 'error') {
-            console.error("Android Local ASR Error:", message);
-            displays.whisperStatusIcon.textContent = 'error';
-            displays.whisperStatusText.textContent = 'Load Error';
-            state.asrMode = 'WEB';
+    while (offsetResult < result.length) {
+        const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+        // Use average value of accumulated samples (simple downsampling)
+        let accum = 0, count = 0;
+        for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+            accum += buffer[i];
+            count++;
         }
-    };
-
-    state.asrWorker.postMessage({ type: 'load' });
+        result[offsetResult] = count > 0 ? accum / count : 0;
+        offsetResult++;
+        offsetBuffer = nextOffsetBuffer;
+    }
+    return result;
 }
 
-function handleVADSpeechEnd(audio) {
-    if (!CONFIG.AUTO_TRIGGER_AI || !state.isRecording) return;
-
-    // If we have local android ASR active, send the audio segment for transcription
-    if (state.asrMode === 'LOCAL_ANDROID' && state.asrWorker && audio) {
-        state.asrWorker.postMessage({ type: 'transcribe', audio });
+function handleVadMessage(e) {
+    const msg = e.data;
+    if (msg.type === 'SPEECH_START') {
+        state.isSpeaking = true;
+        updateVadUI(true);
     }
+    else if (msg.type === 'SPEECH_END') {
+        state.isSpeaking = false;
+        updateVadUI(false);
+        // VAD says User finished speaking.
+        // Trigger AI if we have enough text and it's been silent for a moment.
+        // NOTE: VAD handles the "silence duration" inside the worker (currently ~1.2s).
+        // So if we get SPEECH_END, it means silence WAS > 1.2s.
 
-    if (state.activeRecMode === 'INTERVIEWER' && state.micMode === 'INTERVIEWER') {
-        const text = state.currentTurnBuffer.trim();
-        // If we have local android ASR, we trust it more to flip since it handles transcription
-        if (text.length > 20 || state.asrMode === 'LOCAL_ANDROID') {
-            console.log("VAD: Auto-finalizing interviewer turn...");
-            toggleMic();
-        }
+        // Check if we have pending transcript
+        checkAndTriggerAI();
+    }
+    else if (msg.type === 'LOADED') {
+        console.log("VAD Model Ready");
+        displays.vadStatus.textContent = "VAD: Ready";
+        displays.vadStatus.classList.remove('hidden');
     }
 }
 
-async function setupSpeechRecognition() {
-    // 1. Detect Electron Environment First
-    if (state.isElectron && window.electronAPI) {
-        console.log("Electron Environment Detected: Using Local Python Sidecar");
-        state.asrMode = 'LOCAL';
+
+function setupSpeechRecognition() {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        showToast("Speech API not supported in this browser. Use Chrome/Edge.");
         return;
     }
 
-    // 2. Detect Mobile Environment (Native or Browser)
-    state.isNative = window.Capacitor && window.Capacitor.isNativePlatform();
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
-    if (state.isNative || isMobile) {
-        console.log("Mobile Environment Detected. Mode:", state.asrMode);
-        // If Local Android ASR (Whisper) is target, we let VAD handle it
-        if (state.asrMode === 'LOCAL_ANDROID') {
-            return;
-        }
-
-        if (state.isNative) {
-            return await setupNativeSpeechRecognition();
-        }
-    }
-
-    // 3. Fallback/Standard Web Environment
-    if (capacitorChecks < 15) {
-        capacitorChecks++;
-        await new Promise(r => setTimeout(r, 400));
-        return await setupSpeechRecognition();
-    }
-
-    console.log("Using Web Speech API Fallback");
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-        showToast("Speech Recognition not supported in this browser.");
-        return;
-    }
-
     state.recognition = new SpeechRecognition();
     state.recognition.continuous = true;
     state.recognition.interimResults = true;
-    state.recognition.lang = 'en-US';
+    state.recognition.lang = 'en-IN';
 
     state.recognition.onstart = () => {
-        state.isSpeaking = false;
-        state.activeRecMode = state.micMode;
-        displays.vadStatus.textContent = "VAD: Listening";
-        displays.vadStatus.classList.remove('hidden');
+        // state.isRecording is managed by startSession
     };
 
     state.recognition.onresult = (event) => {
-        if (!state.isRecording) return;
-
-        let interimTranscript = '';
-        let finalTranscript = '';
+        let interim = '';
+        let hasFinal = false;
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
             if (event.results[i].isFinal) {
-                finalTranscript += event.results[i][0].transcript;
+                state.transcriptAccumulator += " " + event.results[i][0].transcript;
+                hasFinal = true;
             } else {
-                interimTranscript += event.results[i][0].transcript;
+                interim += event.results[i][0].transcript;
             }
         }
 
-        handleTranscriptionOutput(finalTranscript, interimTranscript);
+        // Update UI
+        updateTranscriptUI(state.transcriptAccumulator, interim);
+
+        // If we got a final result AND VAD says we are silent, trigger AI immediately.
+        // This fixes the race condition where Speech API finalizes AFTER VAD detects silence.
+        if (hasFinal && !state.isSpeaking) {
+            checkAndTriggerAI();
+        }
     };
 
-    state.recognition.onerror = (event) => {
-        console.error("Speech Recognition Error:", event.error);
-        if (event.error === 'not-allowed') {
-            showToast("Microphone access denied for Speech Recognition.");
-        } else if (event.error === 'no-speech') {
-            console.warn("No speech detected by recognition engine.");
-        } else if (event.error === 'network') {
-            showToast("Network error in Speech Recognition. Please check your connection.");
+    state.recognition.onerror = (e) => {
+        console.warn("Speech Rec Error:", e.error);
+
+        // Filter out common minor errors
+        if (e.error === 'no-speech') return;
+
+        if (e.error === 'network') {
+            showToast("Network Error: Transcript may stop.");
+        } else if (e.error === 'not-allowed') {
+            showToast("Microphone Blocked. Check permissions.");
+        } else {
+            showToast(`Speech Error: ${e.error}`);
         }
     };
 
     state.recognition.onend = () => {
-        console.log("Web Speech Recognition End. Transitioning:", state.isTransitioning, "Recording:", state.isRecording);
-
-        // CRITICAL: If we are transitioning, handle the end of the turn
-        if (state.isTransitioning) {
-            // Save any pending interim before switching
-            if (state.currentInterim && state.currentInterim.trim().length > 0) {
-                state.currentTurnBuffer += state.currentInterim.trim() + " ";
-                state.currentInterim = "";
-            }
-
-            handleSpeechEnd();
-            state.isTransitioning = false;
-
-            if (state.isRecording) {
-                state.activeRecMode = state.micMode;
-                console.log("Starting next turn for mode:", state.activeRecMode);
-                if (state.asrMode === 'LOCAL' && state.isElectron) {
-                    window.electronAPI.startAsr();
-                } else {
-                    try { state.recognition.start(); } catch (e) { console.error("Web Restart Fail:", e); }
-                }
-            }
-            return;
-        }
-
-        // Standard auto-restart if we are still recording
+        // Only restart if we are still logically "recording"
         if (state.isRecording) {
-            if (state.asrMode === 'LOCAL' && state.isElectron) return; // Local ASR handles its own restarts
+            console.log("Speech API ended, attempting restart...");
             try {
+                // Determine if we need a slight delay to prevent crash-loops
+                // (e.g. if error was 'no-speech', restart is fast. If 'network', maybe wait)
+                state.recognition.start();
+            } catch (e) {
+                console.warn("Restart failed:", e);
+                // If immediate restart fails, try again shortly with a backoff
                 setTimeout(() => {
-                    if (state.isRecording && !state.isNative && !state.isTransitioning) {
-                        state.recognition.start();
+                    if (state.isRecording) {
+                        try { state.recognition.start(); } catch (e) { }
                     }
-                }, 100);
-            } catch (e) { }
-        } else {
-            displays.vadStatus.textContent = "VAD: Stopped";
+                }, 1000);
+            }
         }
     };
 }
-
-function handleLocalAsrEvent(msg) {
-    if (!state.isRecording && msg.status !== 'initializing' && msg.status !== 'ready') return;
-
-    if (msg.status === "initializing") {
-        displays.whisperLoader.classList.remove('hidden');
-        displays.whisperStatusIcon.textContent = 'settings';
-        displays.whisperStatusText.textContent = msg.message || "Initializing Desktop AI...";
-        displays.whisperProgress.style.width = '50%';
-    } else if (msg.status === "ready") {
-        displays.whisperLoader.classList.remove('hidden');
-        displays.whisperStatusIcon.textContent = 'check_circle';
-        displays.whisperStatusIcon.classList.add('success');
-        displays.whisperStatusText.textContent = "Desktop ASR Ready";
-        displays.whisperProgress.style.width = '100%';
-        setTimeout(() => displays.whisperLoader.classList.add('hidden'), 3000);
-        showToast("Local ASR: Ready & Optimized");
-    } else if (msg.event === "speech_start") {
-        updateVadUI(true);
-        state.isSpeaking = true;
-    } else if (msg.event === "speech_end") {
-        updateVadUI(false);
-        state.isSpeaking = false;
-    } else if (msg.event === "transcript") {
-        handleTranscriptionOutput(msg.text, "");
-    } else if (msg.status === "error") {
-        console.error("Local ASR Error:", msg.error);
-        displays.whisperStatusIcon.textContent = 'error';
-        displays.whisperStatusText.textContent = 'Desktop ASR Error';
-        showToast("Local ASR Error. Falling back to Web Speech...");
-        state.asrMode = 'WEB';
-        try { state.recognition.start(); } catch (e) { }
-    }
-}
-
-async function setupNativeSpeechRecognition() {
-    // If Local ASR is active or intended for Android, we might skip the native plugin
-    // to avoid mic conflicts with Web VAD.
-    if (state.asrMode === 'LOCAL_ANDROID') {
-        console.log("Native STT: Bypassing due to Local Whisper choice.");
-        return;
-    }
-
-    if (!window.Capacitor || !window.Capacitor.Plugins || !window.Capacitor.Plugins.SpeechRecognition) {
-        console.error("Native SpeechRecognition Plugin NOT found in bridge!");
-        showToast("Error: Native Speech Plugin not found", 5000);
-        // Fallback to web if possible as last resort, though it likely won't work well
-        return;
-    }
-
-    const { SpeechRecognition } = Capacitor.Plugins;
-
-    // Check/Request Permissions
-    const perm = await SpeechRecognition.checkPermissions();
-    if (perm.speechRecognition !== 'granted') {
-        await SpeechRecognition.requestPermissions();
-    }
-
-    SpeechRecognition.addListener('partialResults', (data) => {
-        if (!state.isRecording) return;
-        if (data.matches && data.matches.length > 0) {
-            handleTranscriptionOutput("", data.matches[0]);
-        }
-    });
-
-    // Android-specific Segment Results (Final chunks)
-    SpeechRecognition.addListener('segmentResults', (data) => {
-        if (!state.isRecording) return;
-        if (data.matches && data.matches.length > 0) {
-            handleTranscriptionOutput(data.matches[0], "");
-        }
-    });
-
-    // AUTO-RESTART Loop for Native Android
-    // The native engine often stops after a segment or silence.
-    // We restart it automatically if state.isRecording is still true.
-    SpeechRecognition.addListener('listeningState', (event) => {
-        console.log("Native Listening State Update:", event.status);
-
-        if (event.status === 'stopped' && state.isRecording) {
-            // CRITICAL: If we have an unfinalized partial, save it before any restart or switch
-            if (state.currentInterim && state.currentInterim.trim().length > 0) {
-                console.log("Saving unfinalized text:", state.currentInterim);
-                state.currentTurnBuffer += state.currentInterim.trim() + " ";
-                state.currentInterim = "";
-                updateTranscriptUI(state.currentTurnBuffer, "", state.activeRecMode);
-            }
-
-            if (state.isTransitioning) {
-                console.log("Native turn end logic triggering...");
-                handleSpeechEnd();
-                state.isTransitioning = false;
-
-                // Start next turn
-                state.activeRecMode = state.micMode;
-                console.log(`Starting Native session for ${state.activeRecMode} turn...`);
-                showToast(state.activeRecMode === 'USER' ? "Recording You" : "Recording Interviewer", 2000);
-
-                setTimeout(async () => {
-                    try {
-                        await SpeechRecognition.start({
-                            language: 'en-US',
-                            partialResults: true,
-                            popup: false,
-                            allowForSilence: 40000
-                        });
-                    } catch (e) { console.warn("Native start after transition failed:", e); }
-                }, 100);
-            } else {
-                // Regular auto-restart for silence timeout
-                console.log("Native Speech stopped (silence). restarting...");
-                setTimeout(async () => {
-                    if (state.isRecording && !state.isTransitioning) {
-                        try {
-                            await SpeechRecognition.start({
-                                language: 'en-US',
-                                partialResults: true,
-                                popup: false,
-                                allowForSilence: 40000
-                            });
-                        } catch (e) { console.warn("Native auto-restart failed:", e); }
-                    }
-                }, 60);
-            }
-        }
-    });
-
-    SpeechRecognition.addListener('error', (err) => {
-        console.error("Native Speech Error:", err);
-        showToast("Mic Error: " + err.message);
-    });
-
-    console.log("Android Native Transcription Hooked");
-}
-
-function handleTranscriptionOutput(finalT, interimT) {
-    if (interimT) {
-        state.currentInterim = interimT;
-        updateTranscriptUI(state.currentTurnBuffer, interimT, state.activeRecMode);
-        state.isSpeaking = true;
-        updateVadUI(true);
-    }
-
-    if (finalT) {
-        state.currentInterim = "";
-        const cleanText = finalT.trim();
-        if (cleanText.length > 0) {
-            state.currentTurnBuffer += cleanText + " ";
-            // Real-time update showing finalized + interim
-            updateTranscriptUI(state.currentTurnBuffer, "", state.activeRecMode);
-
-            // Log it for internal history immediately
-            const timestamp = new Date().toLocaleTimeString();
-            state.transcriptLog.push({ timestamp, text: cleanText, mode: state.activeRecMode });
-        }
-        state.isSpeaking = false;
-        updateVadUI(false);
-    }
-}
-
-async function handleSpeechEnd() {
-    // 1. Move the accumulated turn buffer to a permanent bubble
-    const finalTurnText = state.currentTurnBuffer.trim();
-    if (finalTurnText) {
-        addTranscriptBubble(finalTurnText, state.activeRecMode);
-    }
-
-    // 2. If Interviewer finished, trigger AI
-    if (state.activeRecMode === 'INTERVIEWER' && state.micMode === 'USER') {
-        // Use turn buffer or interim fallback
-        let textToTrigger = finalTurnText;
-        if (!textToTrigger && state.currentInterim.trim()) {
-            textToTrigger = state.currentInterim.trim();
-        }
-
-        if (textToTrigger.length > 0) {
-            showToast("AI Processing Question...", 2000);
-            await triggerAI(textToTrigger);
-        }
-    }
-
-    // Clear turn-specific buffers
-    state.currentTurnBuffer = "";
-    state.currentInterim = "";
-}
-
-function startVisualizerLoop() {
-    const dataArray = new Uint8Array(state.analyser.frequencyBinCount);
-
-    const checkVolume = () => {
-        if (!state.isRecording) {
-            state.analysisInterval = requestAnimationFrame(checkVolume);
-            return;
-        }
-
-        state.analyser.getByteFrequencyData(dataArray);
-
-        // Calculate average volume
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-            sum += dataArray[i];
-        }
-        const averageVolume = sum / dataArray.length;
-
-        // Visualizer Update
-        simulateVisualizerVolume(averageVolume);
-
-        state.analysisInterval = requestAnimationFrame(checkVolume);
-    };
-
-    state.analysisInterval = requestAnimationFrame(checkVolume);
-}
-
 
 
 // --- Main Session Logic ---
 
 async function startSession() {
-    if (!state.currentUser) {
-        showToast("Please login first.");
-        switchScreen('auth');
-        return;
-    }
-
     const topic = inputs.topic.value.trim();
     if (!topic) {
         showToast("Please enter a meeting topic.");
@@ -934,9 +320,11 @@ async function startSession() {
         await puter.auth.signIn();
     }
 
-    // Init Audio pipeline using the new mobile-friendly method
-    const audioOk = await setupMobileFriendlyAudio();
+    // Init Audio
+    const audioOk = await setupAudioProcessing();
     if (!audioOk) return;
+
+    setupSpeechRecognition();
 
     state.topic = topic;
     state.transcriptAccumulator = "";
@@ -952,33 +340,9 @@ async function startSession() {
 
     // Start
     state.isRecording = true;
-    state.micMode = 'INTERVIEWER';
-    state.activeRecMode = 'INTERVIEWER';
-    state.lastFinishedMode = null;
-
     try {
-        if (state.isNative && state.asrMode !== 'LOCAL_ANDROID') {
-            const { SpeechRecognition } = Capacitor.Plugins;
-            await SpeechRecognition.start({
-                language: 'en-US',
-                partialResults: true,
-                popup: false
-            });
-        } else if (state.isElectron) {
-            state.asrMode = 'LOCAL';
-            window.electronAPI.startAsr();
-        } else if (state.asrMode === 'LOCAL_ANDROID') {
-            console.log("Starting Session with Local Android ASR");
-            // No need to start anything else, VAD + Worker are already primed
-        } else if (state.recognition) {
-            state.asrMode = 'WEB';
-            try { state.recognition.start(); } catch (e) { }
-        }
-
-        if (state.audioContext && state.audioContext.state === 'suspended') {
-            state.audioContext.resume();
-        }
-        updateMicUI();
+        state.recognition.start();
+        updateMicUI(true);
     } catch (e) { console.error(e); }
 }
 
@@ -1083,11 +447,15 @@ async function streamAIResponse(element) {
         - Use "I" statements. Talk about *your* experience and *your* approach.
         
         CONTEXT AWARENESS:
-        1. You are receiving a transcript from a local Speech-to-Text engine. It WILL contain phonetic mistakes, garbled words, and missing context (e.g., "board process" -> "boot process", "re act" -> "React").
-        2. **FIRST STEP - SMART RECONSTRUCTION**: You MUST first analyze the raw transcript and deduce what the interviewer *actually* asked based on context, technical terms, and sound-alike words. Frame the correct question logically.
-        3. Output your reconstructed question in EXACTLY this format:
-           [QUESTION: The corrected, reconstructed question]
-        4. **SECOND STEP**: Answer the reconstructed question directly. Do not say "I understood this". Just start the answer.
+        1. You are receiving a transcript of the Interviewer. It may have errors (e.g. "board process" -> "boot process").
+        2. **FIRST STEP**: decoding the question. Output it in this format:
+           [QUESTION: Your understanding of the question?]
+        3. **SECOND STEP**: Answer directly. Do not repeat the question or say "I understood this". Just start the answer.
+           
+        CRITICAL: LOOP DETECTION
+        - If the INPUT text is simply a reading (or paraphrasing) of your LAST output, DO NOT generate a new answer.
+        - Output exactly: [IGNORE]
+        - **EXCEPTION**: If there is no previous conversation history (first message), NEVER ignore. Answer it.
         
         ANSWERING RULES:
         1. Start with [QUESTION: ...].
@@ -1117,6 +485,13 @@ async function streamAIResponse(element) {
             const text = part?.text || "";
             if (text) {
                 finalOutput += text;
+
+                // Check for IGNORE tag early
+                if (finalOutput.startsWith("[IGNORE]")) {
+                    element.innerHTML = "<em>(Reading detected - ignored)</em>";
+                    element.style.opacity = "0.5";
+                    continue;
+                }
 
                 // Check for QUESTION tag
                 const qMatch = finalOutput.match(/^\[QUESTION:\s*(.*?)\]/s);
@@ -1165,6 +540,13 @@ async function streamAIResponse(element) {
             }
         }
 
+        if (finalOutput.includes("[IGNORE]")) {
+            setTimeout(() => {
+                if (element.parentNode) element.remove();
+            }, 2000);
+            return null; // Don't save to history
+        }
+
         return finalOutput;
 
     } catch (err) {
@@ -1174,84 +556,16 @@ async function streamAIResponse(element) {
     }
 }
 
-window.receiveDesktopScreenshot = async function (dataUrl) {
-    if (state.isProcessingAI) {
-        showToast("Wait for AI to finish thinking...");
-        return;
-    }
-
-    try {
-        if (!dataUrl) throw new Error("No image data received from wrapper.");
-
-        // Show AI is thinking
-        state.isProcessingAI = true;
-        const aiMessageId = `ai-msg-${Date.now()}`;
-        const aiContainer = document.createElement('div');
-        aiContainer.className = 'ai-message';
-        aiContainer.id = aiMessageId;
-        aiContainer.innerHTML = "<em>Analyzing screen image...</em>";
-        displays.aiFeed.appendChild(aiContainer);
-
-        // Scroll
-        scrollToBottom(displays.aiFeed);
-
-        // Prepare message for Puter AI Vision
-        const visionPrompt = "Analyze this image from a technical interview or problem. It contains a question or code. Act as an expert candidate, extract the problem, and provide a clear, concise step-by-step solution.";
-
-        state.chatHistory.push({ role: "user", content: "[User sent a screenshot]" });
-
-        const messages = [
-            {
-                role: "system",
-                content: `You are an expert technical candidate. You will be given an image. Read the text, understand the problem, and output the solution in Markdown. Keep it strictly focused on solving the problem shown.`
-            },
-            {
-                role: "user",
-                content: [
-                    { type: "text", text: visionPrompt },
-                    { type: "image_url", image_url: { url: dataUrl } }
-                ]
-            }
-        ];
-
-        // Send to Puter API
-        const response = await puter.ai.chat(messages, {
-            model: 'gpt-4o-mini'
-        });
-
-        // Handle response (Assuming unary response for vision for simplicity, or stream if supported)
-        let finalOutput = "";
-        if (response && response.message && response.message.content) {
-            finalOutput = response.message.content;
-        } else if (typeof response === "string") {
-            finalOutput = response;
-        } else {
-            finalOutput = response?.text || "Could not analyze the image.";
-        }
-
-        aiContainer.innerHTML = parseMarkdown(finalOutput);
-
-        state.chatHistory.push({ role: "assistant", content: finalOutput });
-        state.aiLog.push({ timestamp: new Date().toLocaleTimeString(), text: finalOutput });
-
-    } catch (err) {
-        console.error("Screenshot Analysis Failed:", err);
-        showToast("Screenshot capture or analysis failed.");
-    } finally {
-        state.isProcessingAI = false;
-    }
-};
-
 async function quickReply() {
-    // Use whatever is in current turn buffer OR last transcript log
-    let text = state.currentTurnBuffer.trim();
+    // Use whatever is in accumulator OR last transcript
+    let text = state.transcriptAccumulator.trim();
     if (!text && state.transcriptLog.length > 0) {
         text = state.transcriptLog[state.transcriptLog.length - 1].text;
     }
 
     if (text) {
         await triggerAI(text, "QUICK");
-        state.currentTurnBuffer = ""; // Clear buffer
+        state.transcriptAccumulator = ""; // Clear buffer
     } else {
         showToast("Nothing to reply to!");
     }
@@ -1260,69 +574,17 @@ async function quickReply() {
 
 // --- Helper Functions ---
 
-async function toggleMic() {
-    if (!state.isRecording) {
-        // First manual start (if stopped completely)
-        state.isRecording = true;
-        state.micMode = 'INTERVIEWER';
-        state.activeRecMode = 'INTERVIEWER';
-        state.lastFinishedMode = null;
-
-        if (state.isNative) {
-            const { SpeechRecognition } = Capacitor.Plugins;
-            try {
-                await SpeechRecognition.start({
-                    language: 'en-US',
-                    partialResults: true,
-                    popup: false,
-                    allowForSilence: 40000
-                });
-            } catch (e) {
-                console.error("Native Start Fail:", e);
-                showToast("Mic Start failed.");
-                state.isRecording = false;
-            }
-        } else if (state.isElectron) {
-            state.asrMode = 'LOCAL';
-            window.electronAPI.startAsr();
-        } else if (state.recognition) {
-            state.asrMode = 'WEB';
-            try { state.recognition.start(); } catch (e) { }
-        }
-        if (state.audioContext && state.audioContext.state === 'suspended') {
-            state.audioContext.resume();
-        }
-        updateMicUI();
-        return;
-    }
-
-    // Capture the mode we are ending
-    state.lastFinishedMode = state.micMode;
-
-    // Toggle the active mode
-    state.micMode = (state.micMode === 'INTERVIEWER') ? 'USER' : 'INTERVIEWER';
-    updateMicUI();
-
-    if (state.isNative) {
-        const { SpeechRecognition } = Capacitor.Plugins;
-        try {
-            state.isTransitioning = true; // Block auto-restart loop
-            await SpeechRecognition.stop();
-            // Turn switch logic continues in the 'listeningState' listener (stopped status)
-        } catch (e) {
-            console.error("Native transition error:", e);
-            state.isTransitioning = false;
-        }
-    } else if (state.isElectron && state.asrMode === 'LOCAL') {
-        // PERF: Do NOT stop/start the sidecar. It handles its own audio loop.
-        // Just finalize the current turn and switch UI.
-        handleSpeechEnd();
-        state.activeRecMode = state.micMode;
-        console.log("Electron: Turn switched to", state.activeRecMode);
-    } else if (state.recognition) {
-        state.isTransitioning = true;
+function toggleMic() {
+    if (state.isRecording) {
+        state.isRecording = false;
         state.recognition.stop();
-        // Turn switch logic continues in the 'onend' handler
+        if (state.audioContext) state.audioContext.suspend();
+        updateMicUI(false);
+    } else {
+        state.isRecording = true;
+        state.recognition.start();
+        if (state.audioContext) state.audioContext.resume();
+        updateMicUI(true);
     }
 }
 
@@ -1336,7 +598,11 @@ function updateVadUI(isSpeaking) {
     }
 }
 
-function updateTranscriptUI(finalT, interimT, mode = 'INTERVIEWER') {
+function updateTranscriptUI(finalT, interimT) {
+    // Updates the "Current Input" view (could be a floating bubble or just the feed)
+    // For now we just append to feed but ideally we want to see what is "being typing"
+
+    // We'll use a temporary element at the bottom of feed
     let tempEl = document.getElementById('temp-transcript');
     if (!tempEl) {
         tempEl = document.createElement('p');
@@ -1345,52 +611,25 @@ function updateTranscriptUI(finalT, interimT, mode = 'INTERVIEWER') {
         displays.transcriptFeed.appendChild(tempEl);
     }
 
-    const prefix = mode === 'USER' ? 'You' : 'Inv';
-    const strongTag = mode === 'USER' ? `<strong style="color: #64ffda;">${prefix}:</strong>` : `<strong>${prefix}:</strong>`;
-
-    tempEl.innerHTML = `${strongTag} ${finalT} <span style='color:#888'>${interimT}</span>`;
-    if (mode === 'USER') tempEl.classList.add('user-segment');
+    tempEl.innerHTML = `<strong>Inv:</strong> ${finalT} <span style='color:#888'>${interimT}</span>`;
     scrollToBottom(displays.transcriptFeed);
 
+    // Dynamic UI: Hide Header when transcription starts to save space
     if (finalT || interimT) {
         const trHeader = document.querySelector('.transcript-panel .panel-header');
         if (trHeader) trHeader.style.display = 'none';
     }
 }
 
-function addTranscriptBubble(text, mode = 'INTERVIEWER') {
+function addTranscriptBubble(text) {
     let tempEl = document.getElementById('temp-transcript');
-    if (tempEl) tempEl.remove();
+    if (tempEl) tempEl.remove(); // Remove temp
 
     const p = document.createElement('p');
     p.className = 'transcript-segment final';
-    if (mode === 'USER') p.classList.add('user-segment');
-
-    const prefix = mode === 'USER' ? 'You' : 'Inv';
-    const strongTag = mode === 'USER' ? `<strong style="color: #64ffda;">${prefix}:</strong>` : `<strong>${prefix}:</strong>`;
-
-    p.innerHTML = `${strongTag} ${text}`;
+    p.innerHTML = `<strong>Inv:</strong> ${text}`;
     displays.transcriptFeed.appendChild(p);
     scrollToBottom(displays.transcriptFeed);
-}
-
-function updateMicUI() {
-    if (state.isRecording) {
-        buttons.micToggle.classList.add('active');
-        if (state.micMode === 'INTERVIEWER') {
-            displays.status.innerHTML = "Listening to Interviewer...";
-            buttons.micToggle.style.backgroundColor = "#f44336"; // Red to signify "recording interviewer"
-        } else {
-            displays.status.innerHTML = "Recording Your Answer...";
-            buttons.micToggle.style.backgroundColor = "transparent"; // Grey-like/default look
-            buttons.micToggle.style.border = "2px solid rgba(255,255,255,0.3)";
-        }
-    } else {
-        buttons.micToggle.classList.remove('active');
-        buttons.micToggle.style.backgroundColor = "";
-        buttons.micToggle.style.border = "";
-        displays.status.innerHTML = "Mic Paused";
-    }
 }
 
 function switchScreen(name) {
@@ -1430,6 +669,16 @@ function switchScreen(name) {
     }
 }
 
+function updateMicUI(on) {
+    if (on) {
+        buttons.micToggle.classList.add('active');
+        displays.status.textContent = "Listening...";
+    } else {
+        buttons.micToggle.classList.remove('active');
+        displays.status.textContent = "Paused";
+    }
+}
+
 function simulateVisualizerVolume(data) {
     // Calculate RMS
     let sum = 0;
@@ -1453,52 +702,25 @@ function parseMarkdown(text) {
 }
 
 function downloadTranscript() {
-    let output = "INTERVIEW Q&A SESSION LOG\n";
-    output += "=========================\n\n";
+    let output = "INTERVIEW Q&A SESSION\n\n";
 
-    // Combine both logs into one array so we can sort chronologically
-    let combinedLogs = [];
+    state.chatHistory.forEach(msg => {
+        if (msg.role === 'assistant') {
+            let content = msg.content;
+            let question = "Unknown Question";
+            let answer = content;
 
-    state.transcriptLog.forEach(entry => {
-        combinedLogs.push({
-            time: entry.timestamp,
-            speaker: (entry.mode === 'USER') ? "YOU" : "INTERVIEWER",
-            text: entry.text,
-            type: 'speech'
-        });
-    });
+            // Parse [QUESTION: ...]
+            const qMatch = content.match(/^\[QUESTION:\s*(.*?)\]/s);
+            if (qMatch) {
+                question = qMatch[1].trim();
+                answer = content.substring(qMatch[0].length).trim();
+            }
 
-    state.aiLog.forEach(entry => {
-        // Strip the [QUESTION: ...] wrapper if it exists for cleaner reading
-        let cleanText = entry.text;
-        const qMatch = cleanText.match(/^\[QUESTION:\s*(.*?)\]/s);
-        if (qMatch) {
-            cleanText = cleanText.substring(qMatch[0].length).trim();
+            output += `QUESTION: ${question}\n`;
+            output += `ANSWER: ${answer}\n`;
+            output += "--------------------------------------------------\n\n";
         }
-
-        combinedLogs.push({
-            time: entry.timestamp,
-            speaker: "AI ASSISTANT",
-            text: cleanText,
-            type: 'ai'
-        });
-    });
-
-    // Sort by timestamp string (This relies on toLocaleTimeString being sortable, 
-    // but since they are generated sequentially in a session, their array index order + time works fine.
-    // For safer parsing we rely on the fact they were inserted sequentially anyway).
-    // A simpler approach: Just sort by string comparison of timestamp or assume pushing order is close enough.
-    // To be perfectly safe, since they might be pushed out of exact ms order, we'll sort.
-    combinedLogs.sort((a, b) => {
-        // Create dummy dates to parse the times correctly
-        const timeA = new Date('1970/01/01 ' + a.time);
-        const timeB = new Date('1970/01/01 ' + b.time);
-        return timeA - timeB;
-    });
-
-    combinedLogs.forEach(entry => {
-        output += `[${entry.time}] ${entry.speaker}:\n`;
-        output += `${entry.text}\n\n`;
     });
 
     const blob = new Blob([output], { type: 'text/plain' });
@@ -1516,27 +738,8 @@ function clearAndExit() {
 
 function endSession() {
     state.isRecording = false;
-
-    // Stop custom loops and processes
-    cancelAnimationFrame(state.analysisInterval);
-
-    if (state.recognition) {
-        state.recognition.stop();
-    }
-
-    if (state.isElectron && state.asrMode === 'LOCAL') {
-        window.electronAPI.stopAsr();
-    }
-
-    // Stop all media tracks to release the microphone
-    if (state.stream) {
-        state.stream.getTracks().forEach(track => track.stop());
-    }
-
-    if (state.audioContext) {
-        state.audioContext.close();
-    }
-
+    if (state.recognition) state.recognition.stop();
+    if (state.audioContext) state.audioContext.close();
     switchScreen('end');
 
     // Restore AI header for next time
@@ -1547,89 +750,8 @@ function endSession() {
     if (trHeader) trHeader.style.display = 'flex';
 
     // Populate stats (basic for now)
-    const totalWords = state.transcriptLog.reduce((acc, l) => acc + l.text.split(' ').length, 0);
-    displays.statWords.textContent = totalWords + " words";
+    displays.statWords.textContent = state.transcriptLog.reduce((acc, l) => acc + l.text.split(' ').length, 0) + " words";
     displays.statInsights.textContent = state.aiLog.length + " generated";
-
-    // Auto-update usage in backend
-    if (state.currentUser && totalWords > 0) {
-        // Assume roughly 150 words per minute
-        const estMinutes = Math.max(1, (totalWords / 150)).toFixed(1);
-        try {
-            const params = new URLSearchParams();
-            params.append('action', 'updateUsage');
-            params.append('email', state.currentUser.email);
-            params.append('minutes', estMinutes);
-
-            fetch(GOOGLE_URL, {
-                method: 'POST',
-                body: params,
-                redirect: 'follow'
-            });
-        } catch (e) { }
-    }
-
-    // Auto-Upload Transcript to Google Drive
-    if (state.transcriptLog.length > 0) {
-        showToast("Saving session transcript securely...", 4000);
-
-        // 1. Compile the Document exactly like the download file
-        let output = "INTERVIEW Q&A SESSION LOG\n";
-        output += "=========================\n\n";
-
-        let combinedLogs = [];
-        state.transcriptLog.forEach(entry => {
-            combinedLogs.push({
-                time: entry.timestamp,
-                speaker: (entry.mode === 'USER') ? "YOU" : "INTERVIEWER",
-                text: entry.text
-            });
-        });
-        state.aiLog.forEach(entry => {
-            let cleanText = entry.text;
-            const qMatch = cleanText.match(/^\[QUESTION:\s*(.*?)\]/s);
-            if (qMatch) cleanText = cleanText.substring(qMatch[0].length).trim();
-            combinedLogs.push({ time: entry.timestamp, speaker: "AI ASSISTANT", text: cleanText });
-        });
-
-        combinedLogs.sort((a, b) => {
-            return new Date('1970/01/01 ' + a.time) - new Date('1970/01/01 ' + b.time);
-        });
-
-        combinedLogs.forEach(entry => {
-            output += `[${entry.time}] ${entry.speaker}:\n${entry.text}\n\n`;
-        });
-
-        // 2. Send to Backend
-        try {
-            const params = new URLSearchParams();
-            params.append('action', 'uploadTranscript');
-            params.append('email', state.currentUser ? state.currentUser.email : "guest");
-            params.append('topic', state.topic || "Untitled Session");
-            params.append('transcript', output);
-
-            fetch(GOOGLE_URL, {
-                method: 'POST',
-                body: params,
-                redirect: 'follow'
-            }).then(response => response.text())
-                .then(text => {
-                    try {
-                        const data = JSON.parse(text);
-                        if (data.status === 'success') {
-                            showToast("Transcript saved securely!");
-                            console.log("Drive URL:", data.url);
-                        } else {
-                            console.error("Upload error response:", data.message);
-                        }
-                    } catch (e) {
-                        console.error("Failed to parse upload response", text);
-                    }
-                });
-        } catch (err) {
-            console.error("Error initiating transcript upload", err);
-        }
-    }
 }
 
 function isSelfLoop(userText, lastAiText) {
@@ -1703,62 +825,7 @@ function showToast(msg, duration = 3000) {
 
 window.addEventListener('load', init);
 
-// --- Feedback Logic ---
-let currentRating = 0;
 
-document.querySelectorAll('.star').forEach(star => {
-    star.addEventListener('click', (e) => {
-        currentRating = parseInt(e.target.dataset.value);
-        document.querySelectorAll('.star').forEach(s => {
-            const val = parseInt(s.dataset.value);
-            s.textContent = val <= currentRating ? 'star' : 'star_outline';
-            if (val <= currentRating) {
-                s.style.color = '#FFD700';
-            } else {
-                s.style.color = '';
-            }
-        });
-    });
-});
 
-document.addEventListener('DOMContentLoaded', () => {
-    const submitBtn = document.getElementById('submit-feedback-btn');
-    if (submitBtn) {
-        submitBtn.addEventListener('click', async (e) => {
-            const btn = e.target;
-            const comment = document.getElementById('feedback-comment').value.trim();
-            if (currentRating === 0 && !comment) {
-                showToast("Please provide a rating or a comment");
-                return;
-            }
-            setLoading(btn, true);
-            try {
-                const params = new URLSearchParams();
-                params.append('action', 'submitFeedback');
-                params.append('email', state.currentUser ? state.currentUser.email : 'guest');
-                params.append('topic', state.topic || 'Untitled Session');
-                params.append('rating', currentRating);
-                params.append('comment', comment);
 
-                const res = await fetch(GOOGLE_URL, {
-                    method: 'POST',
-                    body: params,
-                    redirect: 'follow'
-                });
-                const textData = await res.text();
-                const data = JSON.parse(textData);
-                if (data.status === 'success') {
-                    showToast("Feedback submitted successfully.");
-                    document.getElementById('feedback-section').innerHTML = "<p style='color: var(--success); text-align: center; padding: 20px 0;'>Thank you for your feedback!</p>";
-                } else {
-                    showToast("Failed to submit feedback: " + data.message);
-                }
-            } catch (err) {
-                showToast("Error submitting feedback.");
-                console.error(err);
-            } finally {
-                setLoading(btn, false);
-            }
-        });
-    }
-});
+
