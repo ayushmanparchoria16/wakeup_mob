@@ -5,9 +5,9 @@
 
 // --- Configuration & State ---
 const CONFIG = {
-    // VAD Settings
-    SAMPLE_RATE: 16000,
-    FRAME_SIZE: 512, // 32ms at 16kHz
+    // Audio Analysis Settings
+    MIN_DECIBELS: -45, // Threshold for detecting speech
+    SILENCE_DELAY_MS: 1500, // How long to wait in silence before sending audio
 };
 
 const state = {
@@ -16,30 +16,46 @@ const state = {
     transcriptLog: [],
     aiLog: [],
     chatHistory: [],
-    recognition: null, // Web Speech API
-    audioContext: null, // For VAD
-    vadWorker: null,
 
-    // VAD Logic
-    isSpeaking: false, // True if VAD detecting speech
+    // Mobile Audio Pipeline
+    audioContext: null,
+    analyser: null,
+    recognition: null,
+    stream: null,
+
+    // VAD Logic Context
+    isSpeaking: false,
     silenceStartTime: 0,
+    analysisInterval: null,
 
     isProcessingAI: false,
     pendingBuffer: "",
     lastAiCallTime: 0,
 
-    // For "Pause" handling
-    transcriptAccumulator: "", // Accumulates text while speaking + short pauses
+    transcriptAccumulator: "",
+    currentUser: null,
+
+    micMode: 'INTERVIEWER', // 'INTERVIEWER' or 'USER'
+    activeRecMode: 'INTERVIEWER',
+    lastFinishedMode: null
 };
 
 // --- DOM Elements ---
 const screens = {
+    auth: document.getElementById('auth-screen'),
+    setup: document.getElementById('setup-screen'),
     meeting: document.getElementById('meeting-screen'),
     end: document.getElementById('end-screen')
 };
 
 const inputs = {
-    topic: document.getElementById('topic-input')
+    topic: document.getElementById('topic-input'),
+    loginEmail: document.getElementById('login-email'),
+    loginPass: document.getElementById('login-password'),
+    regName: document.getElementById('register-name'),
+    regEmail: document.getElementById('register-email'),
+    regPass: document.getElementById('register-password'),
+    forgotEmail: document.getElementById('forgot-email')
 };
 
 const buttons = {
@@ -47,12 +63,24 @@ const buttons = {
     quickReplyMeeting: document.getElementById('quick-reply-meeting-btn'),
     endMeeting: document.getElementById('end-session-btn'),
     micToggle: document.getElementById('mic-toggle-btn'),
+    screenshot: document.getElementById('screenshot-btn'),
     download: document.getElementById('download-btn'),
-    clearExit: document.getElementById('clear-exit-btn')
+    clearExit: document.getElementById('clear-exit-btn'),
+    // Auth buttons
+    tabLogin: document.getElementById('tab-login'),
+    tabReg: document.getElementById('tab-register'),
+    login: document.getElementById('login-btn'),
+    register: document.getElementById('register-btn'),
+    forgotLink: document.getElementById('forgot-password-link'),
+    forgotSubmit: document.getElementById('forgot-btn'),
+    backLogin: document.getElementById('back-to-login-btn'),
+    logout: document.getElementById('logout-link'),
+    switchAccount: document.getElementById('switch-account-link')
 };
 
 const displays = {
     topic: document.getElementById('display-topic'),
+    userName: document.getElementById('user-display-name'),
     transcriptFeed: document.getElementById('transcript-feed'),
     aiFeed: document.getElementById('ai-feed'),
     status: document.getElementById('status-text'),
@@ -60,73 +88,311 @@ const displays = {
     visualizerBars: document.querySelectorAll('.bar'),
     statWords: document.getElementById('stat-words'),
     statInsights: document.getElementById('stat-insights'),
-    toast: document.getElementById('toast')
+    toast: document.getElementById('toast'),
+    // Forms
+    loginForm: document.getElementById('login-form'),
+    regForm: document.getElementById('register-form'),
+    forgotForm: document.getElementById('forgot-form')
 };
 
 // --- Initialization ---
 
 function init() {
+    // Check local storage for user
+    const savedUser = localStorage.getItem('wakeup_user');
+    if (savedUser) {
+        try {
+            state.currentUser = JSON.parse(savedUser);
+            displays.userName.textContent = state.currentUser.displayName || state.currentUser.email.split('@')[0];
+            switchScreen('setup');
+        } catch (e) {
+            console.error("Failed to parse user", e);
+            switchScreen('auth');
+        }
+    } else {
+        switchScreen('auth');
+    }
+
     // Check protocol
     if (window.location.protocol === 'file:') {
         showToast("⚠️ Run via Local Server to save permissions!");
     }
-
-    console.log("Note: Browser Speech API does not support Speaker Diarization.");
-    showToast("Tip: Use Headphones for best VAD performance!", 5000);
 
     // Event Listeners
     buttons.start.addEventListener('click', startSession);
     if (buttons.quickReplyMeeting) buttons.quickReplyMeeting.addEventListener('click', quickReply);
     buttons.endMeeting.addEventListener('click', endSession);
     buttons.micToggle.addEventListener('click', toggleMic);
+    if (buttons.screenshot) buttons.screenshot.addEventListener('click', captureScreenshotAndSolve);
     buttons.download.addEventListener('click', downloadTranscript);
     buttons.clearExit.addEventListener('click', clearAndExit);
 
+    // Auth Listeners
+    setupAuthListeners();
+
+    if (buttons.switchAccount) {
+        buttons.switchAccount.addEventListener('click', async (e) => {
+            e.preventDefault();
+            showToast("Clearing AI Account data...", 2000);
+
+            try {
+                if (puter.auth.isSignedIn()) {
+                    puter.auth.signOut();
+                }
+            } catch (err) {
+                console.warn("Puter signout failed:", err);
+            }
+
+            // Aggressively clear local and session storage
+            const savedUser = localStorage.getItem('wakeup_user');
+            localStorage.clear();
+            sessionStorage.clear();
+
+            // Restore our user
+            if (savedUser) {
+                localStorage.setItem('wakeup_user', savedUser);
+            }
+
+            // Clear all cookies
+            document.cookie.split(";").forEach((c) => {
+                document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+            });
+
+            setTimeout(() => {
+                showToast("Account data cleared. Please start a session to login again.", 3000);
+                setTimeout(() => {
+                    window.location.reload(true);
+                }, 1500);
+            }, 1000);
+        });
+    }
+
     // Spacebar to toggle mic
     document.addEventListener('keydown', (e) => {
-        if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
+        if (e.code === 'Space' && e.target.tagName !== 'INPUT' && screens.meeting.classList.contains('active')) {
             e.preventDefault();
             toggleMic();
         }
     });
+}
 
-    // Check VAD support
-    if (!window.Worker) {
-        showToast("Web Workers not supported. VAD will not function.");
+// --- Auth Logic ---
+function setupAuthListeners() {
+    // Tabs
+    buttons.tabLogin.addEventListener('click', () => {
+        buttons.tabLogin.classList.add('active');
+        buttons.tabReg.classList.remove('active');
+        displays.loginForm.classList.remove('hidden');
+        displays.regForm.classList.add('hidden');
+        displays.forgotForm.classList.add('hidden');
+    });
+
+    buttons.tabReg.addEventListener('click', () => {
+        buttons.tabReg.classList.add('active');
+        buttons.tabLogin.classList.remove('active');
+        displays.regForm.classList.remove('hidden');
+        displays.loginForm.classList.add('hidden');
+        displays.forgotForm.classList.add('hidden');
+    });
+
+    // Forgot Password Flow
+    buttons.forgotLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        displays.loginForm.classList.add('hidden');
+        displays.forgotForm.classList.remove('hidden');
+        buttons.tabLogin.classList.remove('active');
+        buttons.tabReg.classList.remove('active');
+    });
+
+    buttons.backLogin.addEventListener('click', () => {
+        displays.forgotForm.classList.add('hidden');
+        displays.loginForm.classList.remove('hidden');
+        buttons.tabLogin.classList.add('active');
+    });
+
+    // Submit Actions
+    buttons.login.addEventListener('click', handleLogin);
+    buttons.register.addEventListener('click', handleRegister);
+    buttons.logout.addEventListener('click', (e) => {
+        e.preventDefault();
+        handleLogout();
+    });
+    buttons.forgotSubmit.addEventListener('click', handleForgotPassword);
+}
+
+async function handleLogin() {
+    const email = inputs.loginEmail.value.trim();
+    const pass = inputs.loginPass.value;
+
+    if (!email || !pass) return showToast("Please enter email and password");
+
+    setLoading(buttons.login, true);
+
+    try {
+        const params = new URLSearchParams();
+        params.append('action', 'login');
+        params.append('email', email);
+        params.append('password', pass);
+
+        const res = await fetch(GOOGLE_URL, {
+            method: 'POST',
+            body: params,
+            redirect: 'follow'
+        });
+
+        const textData = await res.text();
+        let data;
+        try {
+            data = JSON.parse(textData);
+        } catch (e) {
+            console.error("Raw response:", textData);
+            throw new Error("Invalid JSON response from server");
+        }
+
+        if (data.status === 'success') {
+            state.currentUser = data.user;
+            localStorage.setItem('wakeup_user', JSON.stringify(data.user));
+            displays.userName.textContent = data.user.displayName;
+            switchScreen('setup');
+            showToast("Login successful!");
+        } else {
+            showToast(data.message || "Login failed");
+        }
+    } catch (err) {
+        showToast("Error connecting to server");
+        console.error(err);
+    } finally {
+        setLoading(buttons.login, false);
+    }
+}
+
+async function handleRegister() {
+    const name = inputs.regName.value.trim();
+    const email = inputs.regEmail.value.trim();
+    const pass = inputs.regPass.value;
+
+    if (!email || !pass) return showToast("Email and password required");
+
+    setLoading(buttons.register, true);
+
+    try {
+        const params = new URLSearchParams();
+        params.append('action', 'register');
+        params.append('email', email);
+        params.append('password', pass);
+        params.append('displayName', name || email.split('@')[0]);
+
+        const res = await fetch(GOOGLE_URL, {
+            method: 'POST',
+            body: params,
+            redirect: 'follow'
+        });
+
+        const textData = await res.text();
+        let data;
+        try {
+            data = JSON.parse(textData);
+        } catch (e) {
+            console.error("Raw response:", textData);
+            throw new Error("Invalid JSON response from server");
+        }
+
+        if (data.status === 'success') {
+            showToast("Registration successful! Please login.");
+            buttons.tabLogin.click(); // Switch to login tab
+            inputs.loginEmail.value = email; // Pre-fill email
+        } else {
+            showToast(data.message || "Registration failed");
+        }
+    } catch (err) {
+        showToast("Error connecting to server");
+        console.error(err);
+    } finally {
+        setLoading(buttons.register, false);
+    }
+}
+
+async function handleForgotPassword() {
+    const email = inputs.forgotEmail.value.trim();
+    if (!email) return showToast("Please enter your email");
+
+    setLoading(buttons.forgotSubmit, true);
+
+    try {
+        const params = new URLSearchParams();
+        params.append('action', 'forgotPassword');
+        params.append('email', email);
+
+        const res = await fetch(GOOGLE_URL, {
+            method: 'POST',
+            body: params,
+            redirect: 'follow'
+        });
+
+        const textData = await res.text();
+        let data;
+        try {
+            data = JSON.parse(textData);
+        } catch (e) {
+            console.error("Raw response:", textData);
+            throw new Error("Invalid JSON response from server");
+        }
+
+        if (data.status === 'success') {
+            showToast(data.message || "A temporary password was sent.", 4000);
+            buttons.backLogin.click();
+        } else {
+            // Still show a generic message for security if desired, or error.
+            showToast(data.message || "If this email exists, a reset link was sent.", 4000);
+            buttons.backLogin.click();
+        }
+    } catch (err) {
+        showToast("Error connecting to server");
+        console.error(err);
+    } finally {
+        setLoading(buttons.forgotSubmit, false);
+    }
+}
+
+async function handleLogout() {
+    if (puter.auth.isSignedIn()) {
+        puter.auth.signOut();
+    }
+
+    if (state.currentUser) {
+        try {
+            const params = new URLSearchParams();
+            params.append('action', 'logout');
+            params.append('email', state.currentUser.email);
+
+            await fetch(GOOGLE_URL, {
+                method: 'POST',
+                body: params,
+                redirect: 'follow'
+            });
+        } catch (e) { }
+    }
+
+    state.currentUser = null;
+    localStorage.removeItem('wakeup_user');
+    inputs.topic.value = '';
+    switchScreen('auth');
+    showToast("Logged out successfully");
+}
+
+function setLoading(btn, isLoading) {
+    if (isLoading) {
+        btn.classList.add('btn-loading');
+    } else {
+        btn.classList.remove('btn-loading');
     }
 }
 
 // --- Audio & VAD Setup ---
 
-async function setupAudioProcessing() {
+async function setupMobileFriendlyAudio() {
     try {
-        state.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-            sampleRate: CONFIG.SAMPLE_RATE,
-            latencyHint: 'interactive'
-        });
-
-        // Mobile browsers often ignore the requested sampleRate in the constructor
-        const actualRate = state.audioContext.sampleRate;
-        console.log(`Audio Context Created. Requested: ${CONFIG.SAMPLE_RATE}, Actual: ${actualRate}`);
-
-        // Load VAD Worker
-        try {
-            state.vadWorker = new Worker('./vad_worker.js');
-            state.vadWorker.onerror = (err) => {
-                console.error("VAD Worker Error:", err);
-                showToast("Error loading VAD Worker. Check console.");
-            };
-        } catch (workerErr) {
-            console.error("Worker Creation Failed:", workerErr);
-            showToast("Failed to initialize VAD. Browser might block workers.");
-            return false;
-        }
-
-        state.vadWorker.onmessage = handleVadMessage;
-        state.vadWorker.postMessage({ type: 'INIT' });
-
-        // Get Stream
-        const stream = await navigator.mediaDevices.getUserMedia({
+        state.stream = await navigator.mediaDevices.getUserMedia({
             audio: {
                 echoCancellation: true,
                 noiseSuppression: true,
@@ -134,38 +400,23 @@ async function setupAudioProcessing() {
             }
         });
 
-        const source = state.audioContext.createMediaStreamSource(stream);
+        // 1. Setup AudioContext for visualizer
+        state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = state.audioContext.createMediaStreamSource(state.stream);
+        state.analyser = state.audioContext.createAnalyser();
+        state.analyser.minDecibels = CONFIG.MIN_DECIBELS;
+        state.analyser.fftSize = 256;
+        source.connect(state.analyser);
 
-        // Worklet or ScriptProcessor (simpler for single file)
-        const processor = state.audioContext.createScriptProcessor(CONFIG.FRAME_SIZE, 1, 1);
+        // 2. Setup Web Speech API for local transcription
+        setupSpeechRecognition();
 
-        source.connect(processor);
-        processor.connect(state.audioContext.destination);
+        // 3. Start our custom visualizer loop
+        startVisualizerLoop();
 
-        processor.onaudioprocess = (e) => {
-            if (!state.isRecording) return;
-
-            const inputData = e.inputBuffer.getChannelData(0);
-
-            // --- SMART DOWNSAMPLER ---
-            // "The Funnel": If audio is too fast (e.g. 48k on mobile), slow it down to 16k
-            let vadInput = inputData;
-
-            if (actualRate !== CONFIG.SAMPLE_RATE) {
-                vadInput = downsampleBuffer(inputData, actualRate, CONFIG.SAMPLE_RATE);
-            }
-
-            state.vadWorker.postMessage({
-                type: 'PROCESS',
-                audio: vadInput
-            });
-
-            // Visualize
-            simulateVisualizerVolume(inputData);
-        };
-
-        // Notify debug
-        showToast(`Audio Ready: ${actualRate}Hz`);
+        showToast("Audio Ready!");
+        displays.vadStatus.textContent = "VAD: Ready";
+        displays.vadStatus.classList.remove('hidden');
         return true;
 
     } catch (e) {
@@ -175,140 +426,138 @@ async function setupAudioProcessing() {
     }
 }
 
-// Helper: The "Funnel" that shrinks audio
-function downsampleBuffer(buffer, sampleRate, outSampleRate) {
-    if (outSampleRate === sampleRate) {
-        return buffer;
-    }
-    if (outSampleRate > sampleRate) {
-        // Upsampling not supported/needed
-        return buffer;
-    }
-    const sampleRateRatio = sampleRate / outSampleRate;
-    const newLength = Math.round(buffer.length / sampleRateRatio);
-    const result = new Float32Array(newLength);
-    let offsetResult = 0;
-    let offsetBuffer = 0;
-
-    while (offsetResult < result.length) {
-        const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
-        // Use average value of accumulated samples (simple downsampling)
-        let accum = 0, count = 0;
-        for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
-            accum += buffer[i];
-            count++;
-        }
-        result[offsetResult] = count > 0 ? accum / count : 0;
-        offsetResult++;
-        offsetBuffer = nextOffsetBuffer;
-    }
-    return result;
-}
-
-function handleVadMessage(e) {
-    const msg = e.data;
-    if (msg.type === 'SPEECH_START') {
-        state.isSpeaking = true;
-        updateVadUI(true);
-    }
-    else if (msg.type === 'SPEECH_END') {
-        state.isSpeaking = false;
-        updateVadUI(false);
-        // VAD says User finished speaking.
-        // Trigger AI if we have enough text and it's been silent for a moment.
-        // NOTE: VAD handles the "silence duration" inside the worker (currently ~1.2s).
-        // So if we get SPEECH_END, it means silence WAS > 1.2s.
-
-        // Check if we have pending transcript
-        checkAndTriggerAI();
-    }
-    else if (msg.type === 'LOADED') {
-        console.log("VAD Model Ready");
-        displays.vadStatus.textContent = "VAD: Ready";
-        displays.vadStatus.classList.remove('hidden');
-    }
-}
-
-
 function setupSpeechRecognition() {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-        showToast("Speech API not supported in this browser. Use Chrome/Edge.");
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        showToast("Speech Recognition not supported in this browser. Please use Chrome or Edge.");
         return;
     }
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     state.recognition = new SpeechRecognition();
     state.recognition.continuous = true;
     state.recognition.interimResults = true;
-    state.recognition.lang = 'en-IN';
+    state.recognition.lang = 'en-US'; // Or user configurable
 
     state.recognition.onstart = () => {
-        // state.isRecording is managed by startSession
+        state.isSpeaking = false;
+        state.activeRecMode = state.micMode;
+        displays.vadStatus.textContent = "VAD: Listening";
+        displays.vadStatus.classList.remove('hidden');
     };
 
     state.recognition.onresult = (event) => {
-        let interim = '';
-        let hasFinal = false;
+        if (!state.isRecording) return;
+
+        let interimTranscript = '';
+        let finalTranscript = '';
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
             if (event.results[i].isFinal) {
-                state.transcriptAccumulator += " " + event.results[i][0].transcript;
-                hasFinal = true;
+                finalTranscript += event.results[i][0].transcript;
             } else {
-                interim += event.results[i][0].transcript;
+                interimTranscript += event.results[i][0].transcript;
             }
         }
 
-        // Update UI
-        updateTranscriptUI(state.transcriptAccumulator, interim);
+        if (interimTranscript) {
+            updateTranscriptUI(interimTranscript, "", state.activeRecMode);
+            state.isSpeaking = true;
+            updateVadUI(true);
+        }
 
-        // If we got a final result AND VAD says we are silent, trigger AI immediately.
-        // This fixes the race condition where Speech API finalizes AFTER VAD detects silence.
-        if (hasFinal && !state.isSpeaking) {
-            checkAndTriggerAI();
+        if (finalTranscript) {
+            const cleanText = finalTranscript.trim();
+            if (cleanText.length > 0) {
+                console.log(`Local Transcription (${state.activeRecMode}):`, cleanText);
+
+                // Log it
+                const timestamp = new Date().toLocaleTimeString();
+                state.transcriptLog.push({ timestamp, text: cleanText, mode: state.activeRecMode });
+
+                // Add final text to UI feed permanently
+                addTranscriptBubble(cleanText, state.activeRecMode);
+
+                // Accumulate text if Interviewer, will send on mic toggle
+                if (state.activeRecMode === 'INTERVIEWER') {
+                    state.transcriptAccumulator += cleanText + " ";
+                }
+            }
+
+            state.isSpeaking = false;
+            updateVadUI(false);
         }
     };
 
-    state.recognition.onerror = (e) => {
-        console.warn("Speech Rec Error:", e.error);
-
-        // Filter out common minor errors
-        if (e.error === 'no-speech') return;
-
-        if (e.error === 'network') {
-            showToast("Network Error: Transcript may stop.");
-        } else if (e.error === 'not-allowed') {
-            showToast("Microphone Blocked. Check permissions.");
-        } else {
-            showToast(`Speech Error: ${e.error}`);
+    state.recognition.onerror = (event) => {
+        console.error("Speech Recognition Error:", event.error);
+        if (event.error === 'not-allowed') {
+            showToast("Microphone access denied for Speech Recognition.");
         }
     };
 
     state.recognition.onend = () => {
-        // Only restart if we are still logically "recording"
-        if (state.isRecording) {
-            console.log("Speech API ended, attempting restart...");
-            try {
-                // Determine if we need a slight delay to prevent crash-loops
-                // (e.g. if error was 'no-speech', restart is fast. If 'network', maybe wait)
-                state.recognition.start();
-            } catch (e) {
-                console.warn("Restart failed:", e);
-                // If immediate restart fails, try again shortly with a backoff
-                setTimeout(() => {
-                    if (state.isRecording) {
-                        try { state.recognition.start(); } catch (e) { }
-                    }
-                }, 1000);
+        // Trigger AI if we just finished an INTERVIEWER chunk and the UI toggled to USER mode
+        if (state.activeRecMode === 'INTERVIEWER' && state.micMode === 'USER') {
+            if (state.transcriptAccumulator.trim().length > 0) {
+                console.log("Triggering AI after capturing trailing INTERVIEWER audio");
+                triggerAI(state.transcriptAccumulator.trim());
+                state.transcriptAccumulator = "";
             }
+        }
+
+        // Automatically restart speech recognition if session is still active
+        if (state.isRecording) {
+            try {
+                setTimeout(() => {
+                    if (state.isRecording) state.recognition.start();
+                }, 100);
+            } catch (e) {
+                // Ignore if it's already started
+            }
+        } else {
+            displays.vadStatus.textContent = "VAD: Stopped";
         }
     };
 }
+
+function startVisualizerLoop() {
+    const dataArray = new Uint8Array(state.analyser.frequencyBinCount);
+
+    const checkVolume = () => {
+        if (!state.isRecording) {
+            state.analysisInterval = requestAnimationFrame(checkVolume);
+            return;
+        }
+
+        state.analyser.getByteFrequencyData(dataArray);
+
+        // Calculate average volume
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i];
+        }
+        const averageVolume = sum / dataArray.length;
+
+        // Visualizer Update
+        simulateVisualizerVolume(averageVolume);
+
+        state.analysisInterval = requestAnimationFrame(checkVolume);
+    };
+
+    state.analysisInterval = requestAnimationFrame(checkVolume);
+}
+
 
 
 // --- Main Session Logic ---
 
 async function startSession() {
+    if (!state.currentUser) {
+        showToast("Please login first.");
+        switchScreen('auth');
+        return;
+    }
+
     const topic = inputs.topic.value.trim();
     if (!topic) {
         showToast("Please enter a meeting topic.");
@@ -320,11 +569,9 @@ async function startSession() {
         await puter.auth.signIn();
     }
 
-    // Init Audio
-    const audioOk = await setupAudioProcessing();
+    // Init Audio pipeline using the new mobile-friendly method
+    const audioOk = await setupMobileFriendlyAudio();
     if (!audioOk) return;
-
-    setupSpeechRecognition();
 
     state.topic = topic;
     state.transcriptAccumulator = "";
@@ -340,9 +587,18 @@ async function startSession() {
 
     // Start
     state.isRecording = true;
+    state.micMode = 'INTERVIEWER';
+    state.activeRecMode = 'INTERVIEWER';
+    state.lastFinishedMode = null;
+
     try {
-        state.recognition.start();
-        updateMicUI(true);
+        if (state.recognition) {
+            try { state.recognition.start(); } catch (e) { }
+        }
+        if (state.audioContext.state === 'suspended') {
+            state.audioContext.resume();
+        }
+        updateMicUI();
     } catch (e) { console.error(e); }
 }
 
@@ -447,15 +703,11 @@ async function streamAIResponse(element) {
         - Use "I" statements. Talk about *your* experience and *your* approach.
         
         CONTEXT AWARENESS:
-        1. You are receiving a transcript of the Interviewer. It may have errors (e.g. "board process" -> "boot process").
-        2. **FIRST STEP**: decoding the question. Output it in this format:
-           [QUESTION: Your understanding of the question?]
-        3. **SECOND STEP**: Answer directly. Do not repeat the question or say "I understood this". Just start the answer.
-           
-        CRITICAL: LOOP DETECTION
-        - If the INPUT text is simply a reading (or paraphrasing) of your LAST output, DO NOT generate a new answer.
-        - Output exactly: [IGNORE]
-        - **EXCEPTION**: If there is no previous conversation history (first message), NEVER ignore. Answer it.
+        1. You are receiving a transcript from a local Speech-to-Text engine. It WILL contain phonetic mistakes, garbled words, and missing context (e.g., "board process" -> "boot process", "re act" -> "React").
+        2. **FIRST STEP - SMART RECONSTRUCTION**: You MUST first analyze the raw transcript and deduce what the interviewer *actually* asked based on context, technical terms, and sound-alike words. Frame the correct question logically.
+        3. Output your reconstructed question in EXACTLY this format:
+           [QUESTION: The corrected, reconstructed question]
+        4. **SECOND STEP**: Answer the reconstructed question directly. Do not say "I understood this". Just start the answer.
         
         ANSWERING RULES:
         1. Start with [QUESTION: ...].
@@ -485,13 +737,6 @@ async function streamAIResponse(element) {
             const text = part?.text || "";
             if (text) {
                 finalOutput += text;
-
-                // Check for IGNORE tag early
-                if (finalOutput.startsWith("[IGNORE]")) {
-                    element.innerHTML = "<em>(Reading detected - ignored)</em>";
-                    element.style.opacity = "0.5";
-                    continue;
-                }
 
                 // Check for QUESTION tag
                 const qMatch = finalOutput.match(/^\[QUESTION:\s*(.*?)\]/s);
@@ -540,13 +785,6 @@ async function streamAIResponse(element) {
             }
         }
 
-        if (finalOutput.includes("[IGNORE]")) {
-            setTimeout(() => {
-                if (element.parentNode) element.remove();
-            }, 2000);
-            return null; // Don't save to history
-        }
-
         return finalOutput;
 
     } catch (err) {
@@ -555,6 +793,74 @@ async function streamAIResponse(element) {
         return null;
     }
 }
+
+window.receiveDesktopScreenshot = async function (dataUrl) {
+    if (state.isProcessingAI) {
+        showToast("Wait for AI to finish thinking...");
+        return;
+    }
+
+    try {
+        if (!dataUrl) throw new Error("No image data received from wrapper.");
+
+        // Show AI is thinking
+        state.isProcessingAI = true;
+        const aiMessageId = `ai-msg-${Date.now()}`;
+        const aiContainer = document.createElement('div');
+        aiContainer.className = 'ai-message';
+        aiContainer.id = aiMessageId;
+        aiContainer.innerHTML = "<em>Analyzing screen image...</em>";
+        displays.aiFeed.appendChild(aiContainer);
+
+        // Scroll
+        scrollToBottom(displays.aiFeed);
+
+        // Prepare message for Puter AI Vision
+        const visionPrompt = "Analyze this image from a technical interview or problem. It contains a question or code. Act as an expert candidate, extract the problem, and provide a clear, concise step-by-step solution.";
+
+        state.chatHistory.push({ role: "user", content: "[User sent a screenshot]" });
+
+        const messages = [
+            {
+                role: "system",
+                content: `You are an expert technical candidate. You will be given an image. Read the text, understand the problem, and output the solution in Markdown. Keep it strictly focused on solving the problem shown.`
+            },
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: visionPrompt },
+                    { type: "image_url", image_url: { url: dataUrl } }
+                ]
+            }
+        ];
+
+        // Send to Puter API
+        const response = await puter.ai.chat(messages, {
+            model: 'gpt-4o-mini'
+        });
+
+        // Handle response (Assuming unary response for vision for simplicity, or stream if supported)
+        let finalOutput = "";
+        if (response && response.message && response.message.content) {
+            finalOutput = response.message.content;
+        } else if (typeof response === "string") {
+            finalOutput = response;
+        } else {
+            finalOutput = response?.text || "Could not analyze the image.";
+        }
+
+        aiContainer.innerHTML = parseMarkdown(finalOutput);
+
+        state.chatHistory.push({ role: "assistant", content: finalOutput });
+        state.aiLog.push({ timestamp: new Date().toLocaleTimeString(), text: finalOutput });
+
+    } catch (err) {
+        console.error("Screenshot Analysis Failed:", err);
+        showToast("Screenshot capture or analysis failed.");
+    } finally {
+        state.isProcessingAI = false;
+    }
+};
 
 async function quickReply() {
     // Use whatever is in accumulator OR last transcript
@@ -575,16 +881,34 @@ async function quickReply() {
 // --- Helper Functions ---
 
 function toggleMic() {
-    if (state.isRecording) {
-        state.isRecording = false;
-        state.recognition.stop();
-        if (state.audioContext) state.audioContext.suspend();
-        updateMicUI(false);
-    } else {
+    if (!state.isRecording) {
+        // First manual start (if stopped completely)
         state.isRecording = true;
-        state.recognition.start();
-        if (state.audioContext) state.audioContext.resume();
-        updateMicUI(true);
+        state.micMode = 'INTERVIEWER';
+        state.activeRecMode = 'INTERVIEWER';
+        state.lastFinishedMode = null;
+
+        if (state.recognition) {
+            try { state.recognition.start(); } catch (e) { }
+        }
+        if (state.audioContext && state.audioContext.state === 'suspended') {
+            state.audioContext.resume();
+        }
+        updateMicUI();
+        return;
+    }
+
+    // Capture the mode we are ending
+    state.lastFinishedMode = state.micMode;
+
+    // Toggle the active mode
+    state.micMode = (state.micMode === 'INTERVIEWER') ? 'USER' : 'INTERVIEWER';
+    updateMicUI();
+
+    // Trigger early push by restarting recognition.
+    // Trailing audio processing and AI trigger will happen in onend phase
+    if (state.recognition) {
+        state.recognition.stop();
     }
 }
 
@@ -598,11 +922,7 @@ function updateVadUI(isSpeaking) {
     }
 }
 
-function updateTranscriptUI(finalT, interimT) {
-    // Updates the "Current Input" view (could be a floating bubble or just the feed)
-    // For now we just append to feed but ideally we want to see what is "being typing"
-
-    // We'll use a temporary element at the bottom of feed
+function updateTranscriptUI(finalT, interimT, mode = 'INTERVIEWER') {
     let tempEl = document.getElementById('temp-transcript');
     if (!tempEl) {
         tempEl = document.createElement('p');
@@ -611,25 +931,52 @@ function updateTranscriptUI(finalT, interimT) {
         displays.transcriptFeed.appendChild(tempEl);
     }
 
-    tempEl.innerHTML = `<strong>Inv:</strong> ${finalT} <span style='color:#888'>${interimT}</span>`;
+    const prefix = mode === 'USER' ? 'You' : 'Inv';
+    const strongTag = mode === 'USER' ? `<strong style="color: #64ffda;">${prefix}:</strong>` : `<strong>${prefix}:</strong>`;
+
+    tempEl.innerHTML = `${strongTag} ${finalT} <span style='color:#888'>${interimT}</span>`;
+    if (mode === 'USER') tempEl.classList.add('user-segment');
     scrollToBottom(displays.transcriptFeed);
 
-    // Dynamic UI: Hide Header when transcription starts to save space
     if (finalT || interimT) {
         const trHeader = document.querySelector('.transcript-panel .panel-header');
         if (trHeader) trHeader.style.display = 'none';
     }
 }
 
-function addTranscriptBubble(text) {
+function addTranscriptBubble(text, mode = 'INTERVIEWER') {
     let tempEl = document.getElementById('temp-transcript');
-    if (tempEl) tempEl.remove(); // Remove temp
+    if (tempEl) tempEl.remove();
 
     const p = document.createElement('p');
     p.className = 'transcript-segment final';
-    p.innerHTML = `<strong>Inv:</strong> ${text}`;
+    if (mode === 'USER') p.classList.add('user-segment');
+
+    const prefix = mode === 'USER' ? 'You' : 'Inv';
+    const strongTag = mode === 'USER' ? `<strong style="color: #64ffda;">${prefix}:</strong>` : `<strong>${prefix}:</strong>`;
+
+    p.innerHTML = `${strongTag} ${text}`;
     displays.transcriptFeed.appendChild(p);
     scrollToBottom(displays.transcriptFeed);
+}
+
+function updateMicUI() {
+    if (state.isRecording) {
+        buttons.micToggle.classList.add('active');
+        if (state.micMode === 'INTERVIEWER') {
+            displays.status.innerHTML = "Listening to Interviewer...";
+            buttons.micToggle.style.backgroundColor = "#f44336"; // Red to signify "recording interviewer"
+        } else {
+            displays.status.innerHTML = "Recording Your Answer...";
+            buttons.micToggle.style.backgroundColor = "transparent"; // Grey-like/default look
+            buttons.micToggle.style.border = "2px solid rgba(255,255,255,0.3)";
+        }
+    } else {
+        buttons.micToggle.classList.remove('active');
+        buttons.micToggle.style.backgroundColor = "";
+        buttons.micToggle.style.border = "";
+        displays.status.innerHTML = "Mic Paused";
+    }
 }
 
 function switchScreen(name) {
@@ -669,16 +1016,6 @@ function switchScreen(name) {
     }
 }
 
-function updateMicUI(on) {
-    if (on) {
-        buttons.micToggle.classList.add('active');
-        displays.status.textContent = "Listening...";
-    } else {
-        buttons.micToggle.classList.remove('active');
-        displays.status.textContent = "Paused";
-    }
-}
-
 function simulateVisualizerVolume(data) {
     // Calculate RMS
     let sum = 0;
@@ -702,25 +1039,52 @@ function parseMarkdown(text) {
 }
 
 function downloadTranscript() {
-    let output = "INTERVIEW Q&A SESSION\n\n";
+    let output = "INTERVIEW Q&A SESSION LOG\n";
+    output += "=========================\n\n";
 
-    state.chatHistory.forEach(msg => {
-        if (msg.role === 'assistant') {
-            let content = msg.content;
-            let question = "Unknown Question";
-            let answer = content;
+    // Combine both logs into one array so we can sort chronologically
+    let combinedLogs = [];
 
-            // Parse [QUESTION: ...]
-            const qMatch = content.match(/^\[QUESTION:\s*(.*?)\]/s);
-            if (qMatch) {
-                question = qMatch[1].trim();
-                answer = content.substring(qMatch[0].length).trim();
-            }
+    state.transcriptLog.forEach(entry => {
+        combinedLogs.push({
+            time: entry.timestamp,
+            speaker: (entry.mode === 'USER') ? "YOU" : "INTERVIEWER",
+            text: entry.text,
+            type: 'speech'
+        });
+    });
 
-            output += `QUESTION: ${question}\n`;
-            output += `ANSWER: ${answer}\n`;
-            output += "--------------------------------------------------\n\n";
+    state.aiLog.forEach(entry => {
+        // Strip the [QUESTION: ...] wrapper if it exists for cleaner reading
+        let cleanText = entry.text;
+        const qMatch = cleanText.match(/^\[QUESTION:\s*(.*?)\]/s);
+        if (qMatch) {
+            cleanText = cleanText.substring(qMatch[0].length).trim();
         }
+
+        combinedLogs.push({
+            time: entry.timestamp,
+            speaker: "AI ASSISTANT",
+            text: cleanText,
+            type: 'ai'
+        });
+    });
+
+    // Sort by timestamp string (This relies on toLocaleTimeString being sortable, 
+    // but since they are generated sequentially in a session, their array index order + time works fine.
+    // For safer parsing we rely on the fact they were inserted sequentially anyway).
+    // A simpler approach: Just sort by string comparison of timestamp or assume pushing order is close enough.
+    // To be perfectly safe, since they might be pushed out of exact ms order, we'll sort.
+    combinedLogs.sort((a, b) => {
+        // Create dummy dates to parse the times correctly
+        const timeA = new Date('1970/01/01 ' + a.time);
+        const timeB = new Date('1970/01/01 ' + b.time);
+        return timeA - timeB;
+    });
+
+    combinedLogs.forEach(entry => {
+        output += `[${entry.time}] ${entry.speaker}:\n`;
+        output += `${entry.text}\n\n`;
     });
 
     const blob = new Blob([output], { type: 'text/plain' });
@@ -738,8 +1102,23 @@ function clearAndExit() {
 
 function endSession() {
     state.isRecording = false;
-    if (state.recognition) state.recognition.stop();
-    if (state.audioContext) state.audioContext.close();
+
+    // Stop custom loops and processes
+    cancelAnimationFrame(state.analysisInterval);
+
+    if (state.recognition) {
+        state.recognition.stop();
+    }
+
+    // Stop all media tracks to release the microphone
+    if (state.stream) {
+        state.stream.getTracks().forEach(track => track.stop());
+    }
+
+    if (state.audioContext) {
+        state.audioContext.close();
+    }
+
     switchScreen('end');
 
     // Restore AI header for next time
@@ -750,8 +1129,89 @@ function endSession() {
     if (trHeader) trHeader.style.display = 'flex';
 
     // Populate stats (basic for now)
-    displays.statWords.textContent = state.transcriptLog.reduce((acc, l) => acc + l.text.split(' ').length, 0) + " words";
+    const totalWords = state.transcriptLog.reduce((acc, l) => acc + l.text.split(' ').length, 0);
+    displays.statWords.textContent = totalWords + " words";
     displays.statInsights.textContent = state.aiLog.length + " generated";
+
+    // Auto-update usage in backend
+    if (state.currentUser && totalWords > 0) {
+        // Assume roughly 150 words per minute
+        const estMinutes = Math.max(1, (totalWords / 150)).toFixed(1);
+        try {
+            const params = new URLSearchParams();
+            params.append('action', 'updateUsage');
+            params.append('email', state.currentUser.email);
+            params.append('minutes', estMinutes);
+
+            fetch(GOOGLE_URL, {
+                method: 'POST',
+                body: params,
+                redirect: 'follow'
+            });
+        } catch (e) { }
+    }
+
+    // Auto-Upload Transcript to Google Drive
+    if (state.transcriptLog.length > 0) {
+        showToast("Saving session transcript securely...", 4000);
+
+        // 1. Compile the Document exactly like the download file
+        let output = "INTERVIEW Q&A SESSION LOG\n";
+        output += "=========================\n\n";
+
+        let combinedLogs = [];
+        state.transcriptLog.forEach(entry => {
+            combinedLogs.push({
+                time: entry.timestamp,
+                speaker: (entry.mode === 'USER') ? "YOU" : "INTERVIEWER",
+                text: entry.text
+            });
+        });
+        state.aiLog.forEach(entry => {
+            let cleanText = entry.text;
+            const qMatch = cleanText.match(/^\[QUESTION:\s*(.*?)\]/s);
+            if (qMatch) cleanText = cleanText.substring(qMatch[0].length).trim();
+            combinedLogs.push({ time: entry.timestamp, speaker: "AI ASSISTANT", text: cleanText });
+        });
+
+        combinedLogs.sort((a, b) => {
+            return new Date('1970/01/01 ' + a.time) - new Date('1970/01/01 ' + b.time);
+        });
+
+        combinedLogs.forEach(entry => {
+            output += `[${entry.time}] ${entry.speaker}:\n${entry.text}\n\n`;
+        });
+
+        // 2. Send to Backend
+        try {
+            const params = new URLSearchParams();
+            params.append('action', 'uploadTranscript');
+            params.append('email', state.currentUser ? state.currentUser.email : "guest");
+            params.append('topic', state.topic || "Untitled Session");
+            params.append('transcript', output);
+
+            fetch(GOOGLE_URL, {
+                method: 'POST',
+                body: params,
+                redirect: 'follow'
+            }).then(response => response.text())
+                .then(text => {
+                    try {
+                        const data = JSON.parse(text);
+                        if (data.status === 'success') {
+                            showToast("Transcript saved securely!");
+                            console.log("Drive URL:", data.url);
+                        } else {
+                            console.error("Upload error response:", data.message);
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse upload response", text);
+                    }
+                });
+        } catch (err) {
+            console.error("Error initiating transcript upload", err);
+        }
+    }
 }
 
 function isSelfLoop(userText, lastAiText) {
@@ -825,7 +1285,62 @@ function showToast(msg, duration = 3000) {
 
 window.addEventListener('load', init);
 
+// --- Feedback Logic ---
+let currentRating = 0;
 
+document.querySelectorAll('.star').forEach(star => {
+    star.addEventListener('click', (e) => {
+        currentRating = parseInt(e.target.dataset.value);
+        document.querySelectorAll('.star').forEach(s => {
+            const val = parseInt(s.dataset.value);
+            s.textContent = val <= currentRating ? 'star' : 'star_outline';
+            if (val <= currentRating) {
+                s.style.color = '#FFD700';
+            } else {
+                s.style.color = '';
+            }
+        });
+    });
+});
 
+document.addEventListener('DOMContentLoaded', () => {
+    const submitBtn = document.getElementById('submit-feedback-btn');
+    if (submitBtn) {
+        submitBtn.addEventListener('click', async (e) => {
+            const btn = e.target;
+            const comment = document.getElementById('feedback-comment').value.trim();
+            if (currentRating === 0 && !comment) {
+                showToast("Please provide a rating or a comment");
+                return;
+            }
+            setLoading(btn, true);
+            try {
+                const params = new URLSearchParams();
+                params.append('action', 'submitFeedback');
+                params.append('email', state.currentUser ? state.currentUser.email : 'guest');
+                params.append('topic', state.topic || 'Untitled Session');
+                params.append('rating', currentRating);
+                params.append('comment', comment);
 
-
+                const res = await fetch(GOOGLE_URL, {
+                    method: 'POST',
+                    body: params,
+                    redirect: 'follow'
+                });
+                const textData = await res.text();
+                const data = JSON.parse(textData);
+                if (data.status === 'success') {
+                    showToast("Feedback submitted successfully.");
+                    document.getElementById('feedback-section').innerHTML = "<p style='color: var(--success); text-align: center; padding: 20px 0;'>Thank you for your feedback!</p>";
+                } else {
+                    showToast("Failed to submit feedback: " + data.message);
+                }
+            } catch (err) {
+                showToast("Error submitting feedback.");
+                console.error(err);
+            } finally {
+                setLoading(btn, false);
+            }
+        });
+    }
+});
