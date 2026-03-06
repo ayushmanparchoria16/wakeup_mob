@@ -1287,8 +1287,9 @@ window.addEventListener('load', init);
 // --- Screenshot Logic ---
 
 window.receiveDesktopScreenshot = async function (dataUrl) {
-    if (!dataUrl) {
-        showToast("Capture failed", 3000);
+    if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
+        console.error("Invalid screenshot data:", dataUrl);
+        showToast("Capture failed or invalid data", 3000);
         return;
     }
     showToast("Analyzing screenshot...", 5000);
