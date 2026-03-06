@@ -1285,6 +1285,58 @@ function showToast(msg, duration = 3000) {
 
 window.addEventListener('load', init);
 
+// --- Screenshot Logic ---
+
+async function captureScreenshotAndSolve() {
+    if (!window.electronAPI || !window.electronAPI.takeScreenshot) {
+        showToast("Screenshot only available in Desktop App");
+        return;
+    }
+    showToast("Capturing screen...");
+    try {
+        await window.electronAPI.takeScreenshot();
+    } catch (err) {
+        console.error("Screenshot failed", err);
+        showToast("Failed to capture screen");
+    }
+}
+
+window.receiveDesktopScreenshot = async function (dataUrl) {
+    if (!dataUrl) return;
+    showToast("Analyzing screenshot...", 5000);
+
+    try {
+        const visionPrompt = "You are an expert technical candidate. You will be given an image of a coding problem or technical question. Solve it step-by-step and provide the final answer clearly.";
+
+        const messages = [
+            {
+                role: "system",
+                content: "You are an expert technical candidate. You will be given an image. Read the text, understand the problem, and output the solution in Markdown. Keep it strictly focused on solving the problem shown."
+            },
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: visionPrompt },
+                    { type: "image_url", image_url: { url: dataUrl } }
+                ]
+            }
+        ];
+
+        state.chatHistory.push({ role: "user", content: "[User sent a screenshot]" });
+
+        const response = await puter.ai.chat(messages);
+        const aiText = response.toString();
+
+        state.aiLog.push(aiText);
+        state.chatHistory.push({ role: "assistant", content: aiText });
+        renderAiFeed();
+        showToast("Solution generated!");
+    } catch (err) {
+        console.error("Vision AI failed", err);
+        showToast("Failed to analyze image");
+    }
+};
+
 // --- Feedback Logic ---
 let currentRating = 0;
 
