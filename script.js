@@ -495,14 +495,7 @@ function setupSpeechRecognition() {
     };
 
     state.recognition.onend = () => {
-        // Trigger AI if we just finished an INTERVIEWER chunk and the UI toggled to USER mode
-        if (state.activeRecMode === 'INTERVIEWER' && state.micMode === 'USER') {
-            if (state.transcriptAccumulator.trim().length > 0) {
-                console.log("Triggering AI after capturing trailing INTERVIEWER audio");
-                triggerAI(state.transcriptAccumulator.trim());
-                state.transcriptAccumulator = "";
-            }
-        }
+        // Auto-restart logic remains for when the browser kills the session (timeouts etc)
 
         // Automatically restart speech recognition if session is still active
         if (state.isRecording) {
@@ -897,17 +890,20 @@ function toggleMic() {
         return;
     }
 
-    // Capture the mode we are ending
-    state.lastFinishedMode = state.micMode;
-
     // Toggle the active mode
-    state.micMode = (state.micMode === 'INTERVIEWER') ? 'USER' : 'INTERVIEWER';
+    const oldMode = state.micMode;
+    state.micMode = (oldMode === 'INTERVIEWER') ? 'USER' : 'INTERVIEWER';
+    state.activeRecMode = state.micMode; // Update capture mode instantly
     updateMicUI();
 
-    // Trigger early push by restarting recognition.
-    // Trailing audio processing and AI trigger will happen in onend phase
-    if (state.recognition) {
-        state.recognition.stop();
+    // Hot Switch: Trigger AI if we just finished an INTERVIEWER segment
+    // We don't stop the recognition anymore to keep it continuous/fast
+    if (oldMode === 'INTERVIEWER' && state.micMode === 'USER') {
+        if (state.transcriptAccumulator.trim().length > 0) {
+            console.log("Triggering AI instantly during mic toggle");
+            triggerAI(state.transcriptAccumulator.trim());
+            state.transcriptAccumulator = "";
+        }
     }
 }
 
