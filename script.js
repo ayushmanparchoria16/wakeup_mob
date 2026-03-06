@@ -1333,7 +1333,7 @@ window.receiveDesktopScreenshot = async function (dataUrl) {
 
         for await (const part of response) {
             fullResponse += part?.text || "";
-            aiCard.innerHTML = formatAIResponse(fullResponse);
+            aiCard.innerHTML = parseMarkdown(fullResponse);
             scrollToBottom(aiFeed);
         }
 
