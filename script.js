@@ -37,7 +37,8 @@ const state = {
 
     micMode: 'SPEECH',
     activeRecMode: 'SPEECH',
-    lastFinishedMode: null
+    lastFinishedMode: null,
+    forceNewBubble: false
 };
 
 // --- DOM Elements ---
@@ -685,10 +686,19 @@ function toggleMic() {
     }
 
     // "Answer Now" Logic
-    const buffer = state.currentSessionBuffer.trim();
-    if (buffer.length > 0) {
-        triggerAI(buffer);
+    const finalPayload = (state.currentSessionBuffer + (state.pendingBuffer || "")).trim();
+    if (finalPayload.length > 0) {
+        triggerAI(finalPayload);
+
+        // Comprehensive Buffer Release
         state.currentSessionBuffer = "";
+        state.pendingBuffer = "";
+        state.silenceStartTime = 0;
+        state.forceNewBubble = true;
+
+        // Clear UI temp area
+        updateTranscriptUI("", "", 'SPEECH');
+
         showToast("Answering Now...");
     } else {
         showToast("Nothing to answer yet - Keep talking!");
@@ -729,18 +739,17 @@ function addTranscriptBubble(text, mode = 'INTERVIEWER') {
     if (tempEl) tempEl.remove();
 
     const feed = displays.transcriptFeed;
-    const lastItem = feed.lastElementChild;
-    if (lastItem && lastItem.dataset.mode === mode && lastItem.classList.contains('final')) {
-        lastItem.innerHTML += " " + text;
-    } else {
-        const p = document.createElement('p');
-        p.className = 'transcript-segment final user-segment';
-        p.dataset.mode = mode;
-        const prefix = 'You';
-        const strongTag = `<strong style="color: #64ffda;">${prefix}:</strong>`;
-        p.innerHTML = `${strongTag} ${text}`;
-        feed.appendChild(p);
-    }
+
+    // Always create a new bubble for new chunks as requested
+    state.forceNewBubble = false; // Reset the flag anyway
+    const p = document.createElement('p');
+    p.className = 'transcript-segment final user-segment';
+    p.dataset.mode = mode;
+    const prefix = 'You';
+    const strongTag = `<strong style="color: #64ffda;">${prefix}:</strong>`;
+    p.innerHTML = `${strongTag} ${text}`;
+    feed.appendChild(p);
+
     scrollToBottom(feed);
 }
 
