@@ -4,10 +4,12 @@
  */
 
 // --- Configuration & State ---
+const GOOGLE_URL = 'https://script.google.com/macros/s/AKfycby43nl9_mMl4L874fYORDY9Qx-2PoxjW9TGQ9OUYpRjmLR27Np_Gdc84WDYq1_8bEyv/exec';
+
 const CONFIG = {
     // Audio Analysis Settings
     MIN_DECIBELS: -45, // Threshold for detecting speech
-    SILENCE_DELAY_MS: 1500, // How long to wait in silence before sending audio
+    SILENCE_DELAY_MS: 1200, // How long to wait in silence before sending audio
 };
 
 const state = {
@@ -129,6 +131,13 @@ function init() {
     // Auth Listeners
     setupAuthListeners();
 
+    if (buttons.screenshot) {
+        buttons.screenshot.addEventListener('click', () => {
+            if (window.ipcRenderer) window.ipcRenderer.send('take-screenshot');
+            else showToast("Screenshot only available in Desktop App");
+        });
+    }
+
     if (buttons.switchAccount) {
         buttons.switchAccount.addEventListener('click', async (e) => {
             e.preventDefault();
@@ -165,6 +174,9 @@ function init() {
             }, 1000);
         });
     }
+
+    // Feedback Listeners
+    setupFeedbackListeners();
 
     // Spacebar to toggle mic
     document.addEventListener('keydown', (e) => {
@@ -469,6 +481,8 @@ function setupSpeechRecognition() {
 
         if (interimTranscript) {
             updateTranscriptUI("", interimTranscript.trim(), state.activeRecMode);
+            state.pendingBuffer = interimTranscript.trim();
+            state.silenceStartTime = Date.now();
             updateVadUI(true);
         } else {
             updateVadUI(false);
@@ -483,535 +497,513 @@ function setupSpeechRecognition() {
     };
 
     state.recognition.onend = () => {
-        // Auto-restart logic remains for when the browser kills the session (timeouts etc)
-
-        // Automatically restart speech recognition if session is still active
         if (state.isRecording) {
             try {
                 setTimeout(() => {
                     if (state.isRecording) state.recognition.start();
-                }, 10); // Reduced delay for faster restart
-            } catch (e) {
-                // Ignore if it's already started
-            }
+                }, 10);
+            } catch (e) { }
         } else {
             displays.vadStatus.textContent = "VAD: Stopped";
         }
-    }
+    };
+}
 
-    // --- Visualizer Loop ---
-    function startVisualizerLoop() {
-        const dataArray = new Uint8Array(state.analyser.frequencyBinCount);
-        const checkVolume = () => {
-            if (!state.isRecording) {
-                state.analysisInterval = requestAnimationFrame(checkVolume);
-                return;
-            }
-            state.analyser.getByteFrequencyData(dataArray);
-            let sum = 0;
-            for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-            const averageVolume = sum / dataArray.length;
-            simulateVisualizerVolume(averageVolume);
+// --- Visualizer Loop ---
+function startVisualizerLoop() {
+    const dataArray = new Uint8Array(state.analyser.frequencyBinCount);
+    const checkVolume = () => {
+        if (!state.isRecording) {
             state.analysisInterval = requestAnimationFrame(checkVolume);
-        };
+            return;
+        }
+
+        // Silence Check (Responsive Finalization)
+        if (state.pendingBuffer && (Date.now() - state.silenceStartTime > CONFIG.SILENCE_DELAY_MS)) {
+            const text = state.pendingBuffer;
+            state.pendingBuffer = "";
+            state.silenceStartTime = 0;
+            state.currentSessionBuffer += text + " ";
+            state.transcriptLog.push({
+                timestamp: new Date().toLocaleTimeString(),
+                text: text,
+                mode: state.activeRecMode
+            });
+            addTranscriptBubble(text, state.activeRecMode);
+            updateTranscriptUI("", "", state.activeRecMode);
+        }
+
+        state.analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+        const averageVolume = sum / dataArray.length;
+        simulateVisualizerVolume(averageVolume);
         state.analysisInterval = requestAnimationFrame(checkVolume);
+    };
+    state.analysisInterval = requestAnimationFrame(checkVolume);
+}
+
+// --- Main Session Logic ---
+async function startSession() {
+    if (!state.currentUser) {
+        showToast("Please login first.");
+        switchScreen('auth');
+        return;
     }
 
-    // --- Main Session Logic ---
-    async function startSession() {
-        if (!state.currentUser) {
-            showToast("Please login first.");
-            switchScreen('auth');
+    const topic = inputs.topic.value.trim();
+    if (!topic) {
+        showToast("Please enter a meeting topic.");
+        return;
+    }
+
+    if (!puter.auth.isSignedIn()) await puter.auth.signIn();
+
+    const audioOk = await setupMobileFriendlyAudio();
+    if (!audioOk) return;
+
+    state.topic = topic;
+    state.chatHistory = [];
+    state.transcriptLog = [];
+    state.aiLog = [];
+
+    displays.transcriptFeed.innerHTML = '';
+    displays.aiFeed.innerHTML = '';
+    displays.topic.textContent = topic;
+    switchScreen('meeting');
+
+    state.isRecording = true;
+    state.micMode = 'INTERVIEWER';
+    state.activeRecMode = 'INTERVIEWER';
+    state.lastFinishedMode = null;
+
+    try {
+        if (state.recognition) try { state.recognition.start(); } catch (e) { }
+        if (state.audioContext.state === 'suspended') state.audioContext.resume();
+        updateMicUI();
+    } catch (e) { console.error(e); }
+}
+
+// --- AI Integration ---
+async function triggerAI(text, type = "SPEECH") {
+    if (state.isProcessingAI) return;
+
+    const lastMessage = state.chatHistory.length > 0 ? state.chatHistory[state.chatHistory.length - 1] : null;
+    if (lastMessage && lastMessage.role === 'assistant') {
+        if (isSelfLoop(text, lastMessage.content)) {
+            const feed = displays.aiFeed;
+            const feedbackDiv = document.createElement('div');
+            feedbackDiv.className = 'ai-message';
+            feedbackDiv.style.opacity = "0.6";
+            feedbackDiv.style.fontStyle = "italic";
+            feedbackDiv.innerText = "(Reading detected - Skipped AI)";
+            feed.appendChild(feedbackDiv);
+            scrollToBottom(feed);
+            setTimeout(() => { if (feedbackDiv.parentNode) feedbackDiv.remove(); }, 2500);
             return;
         }
+    }
 
-        const topic = inputs.topic.value.trim();
-        if (!topic) {
-            showToast("Please enter a meeting topic.");
-            return;
+    state.isProcessingAI = true;
+    const aiContainer = document.createElement('div');
+    aiContainer.className = 'ai-message';
+    displays.aiFeed.appendChild(aiContainer);
+    scrollToBottom(displays.aiFeed);
+
+    state.chatHistory.push({ role: "user", content: text });
+
+    try {
+        const fullResponseText = await streamAIResponse(aiContainer);
+        if (fullResponseText) {
+            state.chatHistory.push({ role: "assistant", content: fullResponseText });
+            state.aiLog.push({ timestamp: new Date().toLocaleTimeString(), text: fullResponseText });
         }
+    } finally {
+        state.isProcessingAI = false;
+    }
+}
 
-        if (!puter.auth.isSignedIn()) await puter.auth.signIn();
+async function streamAIResponse(element) {
+    const systemMessage = {
+        role: "system",
+        content: `You are an experienced job candidate. Topic: "${state.topic}". Style: HUMAN, SIMPLE INDIAN ENGLISH. Avoid robotic openers. Reconstruction: Deduce actual question from phonetic errors. Format: [QUESTION: ...] followed by answer.`
+    };
+    const messages = [systemMessage, ...state.chatHistory.slice(-15)];
+    try {
+        const response = await puter.ai.chat(messages, { stream: true, model: 'gpt-4o-mini' });
+        element.innerHTML = "";
+        let finalOutput = "";
+        let hasScrolled = false;
+        for await (const part of response) {
+            const text = part?.text || "";
+            if (text) {
+                finalOutput += text;
+                const qMatch = finalOutput.match(/^\[QUESTION:\s*(.*?)\]/s);
+                if (qMatch) {
+                    const qText = qMatch[1];
+                    const answerText = finalOutput.substring(qMatch[0].length).trim();
+                    element.innerHTML = `<div style="color: #FFD700; font-weight: bold; margin-bottom: 8px;">${parseMarkdown(qText)}</div>${parseMarkdown(answerText)}`;
+                } else {
+                    element.innerHTML = parseMarkdown(finalOutput);
+                }
+                if (!hasScrolled && finalOutput.length > 20) {
+                    displays.aiFeed.scrollTo({ top: element.offsetTop - 20, behavior: 'smooth' });
+                    hasScrolled = true;
+                }
+            }
+        }
+        return finalOutput;
+    } catch (err) {
+        console.error("AI Error:", err);
+        element.innerHTML = "<span style='color:red'>AI Error</span>";
+        return null;
+    }
+}
 
-        const audioOk = await setupMobileFriendlyAudio();
-        if (!audioOk) return;
+async function quickReply() {
+    let text = state.currentSessionBuffer.trim();
+    if (!text && state.transcriptLog.length > 0) {
+        text = state.transcriptLog[state.transcriptLog.length - 1].text;
+    }
+    if (text) {
+        await triggerAI(text, "QUICK");
+        state.currentSessionBuffer = "";
+    } else {
+        showToast("Nothing to reply to!");
+    }
+}
 
-        state.topic = topic;
-        state.chatHistory = [];
-        state.transcriptLog = [];
-        state.aiLog = [];
-
-        displays.transcriptFeed.innerHTML = '';
-        displays.aiFeed.innerHTML = '';
-        displays.topic.textContent = topic;
-        switchScreen('meeting');
-
+// --- Helper Functions ---
+function toggleMic() {
+    if (!state.isRecording) {
         state.isRecording = true;
         state.micMode = 'INTERVIEWER';
         state.activeRecMode = 'INTERVIEWER';
-        state.lastFinishedMode = null;
-
-        try {
-            if (state.recognition) try { state.recognition.start(); } catch (e) { }
-            if (state.audioContext.state === 'suspended') state.audioContext.resume();
-            updateMicUI();
-        } catch (e) { console.error(e); }
-    }
-
-    // --- AI Integration ---
-    async function triggerAI(text, type = "SPEECH") {
-        if (state.isProcessingAI) return;
-
-        const lastMessage = state.chatHistory.length > 0 ? state.chatHistory[state.chatHistory.length - 1] : null;
-        if (lastMessage && lastMessage.role === 'assistant') {
-            if (isSelfLoop(text, lastMessage.content)) {
-                const feed = displays.aiFeed;
-                const feedbackDiv = document.createElement('div');
-                feedbackDiv.className = 'ai-message';
-                feedbackDiv.style.opacity = "0.6";
-                feedbackDiv.style.fontStyle = "italic";
-                feedbackDiv.innerText = "(Reading detected - Skipped AI)";
-                feed.appendChild(feedbackDiv);
-                scrollToBottom(feed);
-                setTimeout(() => { if (feedbackDiv.parentNode) feedbackDiv.remove(); }, 2500);
-                return;
-            }
-        }
-
-        state.isProcessingAI = true;
-        const aiContainer = document.createElement('div');
-        aiContainer.className = 'ai-message';
-        displays.aiFeed.appendChild(aiContainer);
-        scrollToBottom(displays.aiFeed);
-
-        state.chatHistory.push({ role: "user", content: text });
-
-        try {
-            const fullResponseText = await streamAIResponse(aiContainer);
-            if (fullResponseText) {
-                state.chatHistory.push({ role: "assistant", content: fullResponseText });
-                state.aiLog.push({ timestamp: new Date().toLocaleTimeString(), text: fullResponseText });
-            }
-        } finally {
-            state.isProcessingAI = false;
-        }
-    }
-
-    async function streamAIResponse(element) {
-        const systemMessage = {
-            role: "system",
-            content: `You are an experienced job candidate. Topic: "${state.topic}". Style: HUMAN, SIMPLE INDIAN ENGLISH. Avoid robotic openers. Reconstruction: Deduce actual question from phonetic errors. Format: [QUESTION: ...] followed by answer.`
-        };
-        const messages = [systemMessage, ...state.chatHistory.slice(-15)];
-        try {
-            const response = await puter.ai.chat(messages, { stream: true, model: 'gpt-4o-mini' });
-            element.innerHTML = "";
-            let finalOutput = "";
-            let hasScrolled = false;
-            for await (const part of response) {
-                const text = part?.text || "";
-                if (text) {
-                    finalOutput += text;
-                    const qMatch = finalOutput.match(/^\[QUESTION:\s*(.*?)\]/s);
-                    if (qMatch) {
-                        const qText = qMatch[1];
-                        const answerText = finalOutput.substring(qMatch[0].length).trim();
-                        element.innerHTML = `<div style="color: #FFD700; font-weight: bold; margin-bottom: 8px;">${parseMarkdown(qText)}</div>${parseMarkdown(answerText)}`;
-                    } else {
-                        element.innerHTML = parseMarkdown(finalOutput);
-                    }
-                    if (!hasScrolled && finalOutput.length > 20) {
-                        displays.aiFeed.scrollTo({ top: element.offsetTop - 20, behavior: 'smooth' });
-                        hasScrolled = true;
-                    }
-                }
-            }
-            return finalOutput;
-        } catch (err) {
-            console.error("AI Error:", err);
-            element.innerHTML = "<span style='color:red'>AI Error</span>";
-            return null;
-        }
-    }
-
-    async function quickReply() {
-        let text = state.currentSessionBuffer.trim();
-        if (!text && state.transcriptLog.length > 0) {
-            text = state.transcriptLog[state.transcriptLog.length - 1].text;
-        }
-        if (text) {
-            await triggerAI(text, "QUICK");
-            state.currentSessionBuffer = "";
-        } else {
-            showToast("Nothing to reply to!");
-        }
-    }
-
-    // --- Helper Functions ---
-    function toggleMic() {
-        if (!state.isRecording) {
-            state.isRecording = true;
-            state.micMode = 'INTERVIEWER';
-            state.activeRecMode = 'INTERVIEWER';
-            if (state.recognition) try { state.recognition.start(); } catch (e) { }
-            if (state.audioContext?.state === 'suspended') state.audioContext.resume();
-            updateMicUI();
-            return;
-        }
-        const oldMode = state.micMode;
-        state.micMode = (oldMode === 'INTERVIEWER') ? 'USER' : 'INTERVIEWER';
-        state.activeRecMode = state.micMode;
+        if (state.recognition) try { state.recognition.start(); } catch (e) { }
+        if (state.audioContext?.state === 'suspended') state.audioContext.resume();
         updateMicUI();
-        if (oldMode === 'INTERVIEWER' && state.micMode === 'USER') {
-            const buffer = state.currentSessionBuffer.trim();
-            if (buffer.length > 0) {
-                triggerAI(buffer);
-                state.currentSessionBuffer = "";
-            }
+        return;
+    }
+    const oldMode = state.micMode;
+    state.micMode = (oldMode === 'INTERVIEWER') ? 'USER' : 'INTERVIEWER';
+    state.activeRecMode = state.micMode;
+    updateMicUI();
+    if (oldMode === 'INTERVIEWER' && state.micMode === 'USER') {
+        const buffer = state.currentSessionBuffer.trim();
+        if (buffer.length > 0) {
+            triggerAI(buffer);
+            state.currentSessionBuffer = "";
         }
     }
+}
 
-    function updateVadUI(isSpeaking) {
-        if (isSpeaking) {
-            displays.vadStatus.textContent = "VAD: Speaking";
-            displays.vadStatus.classList.add('speaking');
-        } else {
-            displays.vadStatus.textContent = "VAD: Silence";
-            displays.vadStatus.classList.remove('speaking');
-        }
+function updateVadUI(isSpeaking) {
+    if (isSpeaking) {
+        displays.vadStatus.textContent = "VAD: Speaking";
+        displays.vadStatus.classList.add('speaking');
+    } else {
+        displays.vadStatus.textContent = "VAD: Silence";
+        displays.vadStatus.classList.remove('speaking');
     }
+}
 
-    function updateTranscriptUI(finalT, interimT, mode = 'INTERVIEWER') {
-        let tempEl = document.getElementById('temp-transcript');
-        if (!tempEl) {
-            tempEl = document.createElement('p');
-            tempEl.id = 'temp-transcript';
-            tempEl.style.opacity = '0.7';
-            displays.transcriptFeed.appendChild(tempEl);
-        }
+function updateTranscriptUI(finalT, interimT, mode = 'INTERVIEWER') {
+    let tempEl = document.getElementById('temp-transcript');
+    if (!tempEl) {
+        tempEl = document.createElement('p');
+        tempEl.id = 'temp-transcript';
+        tempEl.style.opacity = '0.7';
+        displays.transcriptFeed.appendChild(tempEl);
+    }
+    const prefix = mode === 'USER' ? 'You' : 'Inv';
+    const strongTag = mode === 'USER' ? `<strong style="color: #64ffda;">${prefix}:</strong>` : `<strong>${prefix}:</strong>`;
+    tempEl.innerHTML = `${strongTag} ${finalT} <span style='color:#888'>${interimT}</span>`;
+    if (mode === 'USER') tempEl.classList.add('user-segment');
+    scrollToBottom(displays.transcriptFeed);
+    if (finalT || interimT) {
+        const trHeader = document.querySelector('.transcript-panel .panel-header');
+        if (trHeader) trHeader.style.display = 'none';
+    }
+}
+
+function addTranscriptBubble(text, mode = 'INTERVIEWER') {
+    let tempEl = document.getElementById('temp-transcript');
+    if (tempEl) tempEl.remove();
+
+    const feed = displays.transcriptFeed;
+    const lastItem = feed.lastElementChild;
+    if (lastItem && lastItem.dataset.mode === mode && lastItem.classList.contains('final')) {
+        lastItem.innerHTML += " " + text;
+    } else {
+        const p = document.createElement('p');
+        p.className = 'transcript-segment final';
+        p.dataset.mode = mode;
+        if (mode === 'USER') p.classList.add('user-segment');
         const prefix = mode === 'USER' ? 'You' : 'Inv';
         const strongTag = mode === 'USER' ? `<strong style="color: #64ffda;">${prefix}:</strong>` : `<strong>${prefix}:</strong>`;
-        tempEl.innerHTML = `${strongTag} ${finalT} <span style='color:#888'>${interimT}</span>`;
-        if (mode === 'USER') tempEl.classList.add('user-segment');
-        scrollToBottom(displays.transcriptFeed);
-        if (finalT || interimT) {
-            const trHeader = document.querySelector('.transcript-panel .panel-header');
-            if (trHeader) trHeader.style.display = 'none';
-        }
+        p.innerHTML = `${strongTag} ${text}`;
+        feed.appendChild(p);
     }
+    scrollToBottom(feed);
+}
 
-    function addTranscriptBubble(text, mode = 'INTERVIEWER') {
-        let tempEl = document.getElementById('temp-transcript');
-        if (tempEl) tempEl.remove();
-
-        const feed = displays.transcriptFeed;
-        const lastItem = feed.lastElementChild;
-        if (lastItem && lastItem.dataset.mode === mode && lastItem.classList.contains('final')) {
-            lastItem.innerHTML += " " + text;
+function updateMicUI() {
+    if (state.isRecording) {
+        buttons.micToggle.classList.add('active');
+        if (state.micMode === 'INTERVIEWER') {
+            displays.status.innerHTML = "Listening to Interviewer...";
+            buttons.micToggle.style.backgroundColor = "#f44336";
         } else {
-            const p = document.createElement('p');
-            p.className = 'transcript-segment final';
-            p.dataset.mode = mode;
-            if (mode === 'USER') p.classList.add('user-segment');
-            const prefix = mode === 'USER' ? 'You' : 'Inv';
-            const strongTag = mode === 'USER' ? `<strong style="color: #64ffda;">${prefix}:</strong>` : `<strong>${prefix}:</strong>`;
-            p.innerHTML = `${strongTag} ${text}`;
-            feed.appendChild(p);
+            displays.status.innerHTML = "Recording Your Answer...";
+            buttons.micToggle.style.backgroundColor = "transparent";
+            buttons.micToggle.style.border = "2px solid rgba(255,255,255,0.3)";
         }
-        scrollToBottom(feed);
+    } else {
+        buttons.micToggle.classList.remove('active');
+        buttons.micToggle.style.backgroundColor = "";
+        buttons.micToggle.style.border = "";
+        displays.status.innerHTML = "Mic Paused";
     }
+}
 
-    function updateMicUI() {
-        if (state.isRecording) {
-            buttons.micToggle.classList.add('active');
-            if (state.micMode === 'INTERVIEWER') {
-                displays.status.innerHTML = "Listening to Interviewer...";
-                buttons.micToggle.style.backgroundColor = "#f44336";
-            } else {
-                displays.status.innerHTML = "Recording Your Answer...";
-                buttons.micToggle.style.backgroundColor = "transparent";
-                buttons.micToggle.style.border = "2px solid rgba(255,255,255,0.3)";
-            }
-        } else {
-            buttons.micToggle.classList.remove('active');
-            buttons.micToggle.style.backgroundColor = "";
-            buttons.micToggle.style.border = "";
-            displays.status.innerHTML = "Mic Paused";
+function switchScreen(name) {
+    const target = screens[name];
+    Object.values(screens).forEach(s => {
+        if (s !== target) {
+            s.classList.remove('active');
+            setTimeout(() => { if (!s.classList.contains('active')) s.style.display = 'none'; }, 400);
         }
+    });
+    if (target) {
+        target.style.display = 'flex';
+        requestAnimationFrame(() => target.classList.add('active'));
+    }
+    const mainHeader = document.querySelector('body > .app-container > header');
+    if (mainHeader) mainHeader.style.display = (name === 'meeting') ? 'none' : 'block';
+}
+
+function simulateVisualizerVolume(avgVolume) {
+    const val = Math.min(avgVolume / 128, 1);
+    displays.visualizerBars.forEach(bar => {
+        bar.style.transform = `scaleY(${Math.max(0.1, val + Math.random() * 0.2)})`;
+    });
+}
+
+function parseMarkdown(text) {
+    if (!text) return "";
+    let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    html = html.replace(/```([\s\S]*?)```/g, '<div class="code-box">$1</div>');
+    html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    return html.replace(/\n/g, '<br>');
+}
+
+function downloadTranscript() {
+    let output = "INTERVIEW Q&A SESSION LOG\n=========================\n\n";
+    let combinedLogs = [];
+    state.transcriptLog.forEach(entry => combinedLogs.push({ time: entry.timestamp, speaker: (entry.mode === 'USER') ? "YOU" : "INTERVIEWER", text: entry.text }));
+    state.aiLog.forEach(entry => {
+        let cleanText = entry.text;
+        const qMatch = cleanText.match(/^\[QUESTION:\s*(.*?)\]/s);
+        if (qMatch) cleanText = cleanText.substring(qMatch[0].length).trim();
+        combinedLogs.push({ time: entry.timestamp, speaker: "AI ASSISTANT", text: cleanText });
+    });
+    combinedLogs.sort((a, b) => new Date('1970/01/01 ' + a.time) - new Date('1970/01/01 ' + b.time));
+    combinedLogs.forEach(entry => output += `[${entry.time}] ${entry.speaker}:\n${entry.text}\n\n`);
+    const blob = new Blob([output], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'interview_qa.txt'; a.click();
+}
+
+function clearAndExit() { location.reload(); }
+
+function endSession() {
+    state.isRecording = false;
+    cancelAnimationFrame(state.analysisInterval);
+    if (state.recognition) state.recognition.stop();
+    if (state.stream) state.stream.getTracks().forEach(track => track.stop());
+    if (state.audioContext) state.audioContext.close();
+    switchScreen('end');
+    const aiHeader = document.querySelector('.ai-panel .panel-header');
+    if (aiHeader) aiHeader.style.display = 'flex';
+    const trHeader = document.querySelector('.transcript-panel .panel-header');
+    if (trHeader) trHeader.style.display = 'flex';
+    const totalWords = state.transcriptLog.reduce((acc, l) => acc + l.text.split(' ').length, 0);
+    displays.statWords.textContent = totalWords + " words";
+    displays.statInsights.textContent = state.aiLog.length + " generated";
+    if (state.currentUser && totalWords > 0) {
+        const estMinutes = Math.max(1, (totalWords / 150)).toFixed(1);
+        const params = new URLSearchParams();
+        params.append('action', 'updateUsage');
+        params.append('email', state.currentUser.email);
+        params.append('minutes', estMinutes);
+        fetch(GOOGLE_URL, { method: 'POST', body: params, redirect: 'follow' }).catch(() => { });
     }
 
-    function switchScreen(name) {
-        const target = screens[name];
-        Object.values(screens).forEach(s => {
-            if (s !== target) {
-                s.classList.remove('active');
-                setTimeout(() => { if (!s.classList.contains('active')) s.style.display = 'none'; }, 400);
-            }
-        });
-        if (target) {
-            target.style.display = 'flex';
-            requestAnimationFrame(() => target.classList.add('active'));
-        }
-        const mainHeader = document.querySelector('body > .app-container > header');
-        if (mainHeader) mainHeader.style.display = (name === 'meeting') ? 'none' : 'block';
-    }
+    // Auto-Upload Transcript to Google Drive
+    if (state.transcriptLog.length > 0) {
+        showToast("Saving session transcript securely...", 4000);
 
-    function simulateVisualizerVolume(avgVolume) {
-        const val = Math.min(avgVolume / 128, 1);
-        displays.visualizerBars.forEach(bar => {
-            bar.style.transform = `scaleY(${Math.max(0.1, val + Math.random() * 0.2)})`;
-        });
-    }
+        // 1. Compile the Document exactly like the download file
+        let output = "INTERVIEW Q&A SESSION LOG\n";
+        output += "=========================\n\n";
 
-    function parseMarkdown(text) {
-        if (!text) return "";
-        let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        html = html.replace(/```([\s\S]*?)```/g, '<div class="code-box">$1</div>');
-        html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-        return html.replace(/\n/g, '<br>');
-    }
-
-    function downloadTranscript() {
-        let output = "INTERVIEW Q&A SESSION LOG\n=========================\n\n";
         let combinedLogs = [];
-        state.transcriptLog.forEach(entry => combinedLogs.push({ time: entry.timestamp, speaker: (entry.mode === 'USER') ? "YOU" : "INTERVIEWER", text: entry.text }));
+        state.transcriptLog.forEach(entry => {
+            combinedLogs.push({
+                time: entry.timestamp,
+                speaker: (entry.mode === 'USER') ? "YOU" : "INTERVIEWER",
+                text: entry.text
+            });
+        });
         state.aiLog.forEach(entry => {
             let cleanText = entry.text;
             const qMatch = cleanText.match(/^\[QUESTION:\s*(.*?)\]/s);
             if (qMatch) cleanText = cleanText.substring(qMatch[0].length).trim();
             combinedLogs.push({ time: entry.timestamp, speaker: "AI ASSISTANT", text: cleanText });
         });
-        combinedLogs.sort((a, b) => new Date('1970/01/01 ' + a.time) - new Date('1970/01/01 ' + b.time));
-        combinedLogs.forEach(entry => output += `[${entry.time}] ${entry.speaker}:\n${entry.text}\n\n`);
-        const blob = new Blob([output], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = 'interview_qa.txt'; a.click();
-    }
 
-    function clearAndExit() { location.reload(); }
+        combinedLogs.sort((a, b) => {
+            return new Date('1970/01/01 ' + a.time) - new Date('1970/01/01 ' + b.time);
+        });
 
-    function endSession() {
-        state.isRecording = false;
-        cancelAnimationFrame(state.analysisInterval);
-        if (state.recognition) state.recognition.stop();
-        if (state.stream) state.stream.getTracks().forEach(track => track.stop());
-        if (state.audioContext) state.audioContext.close();
-        switchScreen('end');
-        const aiHeader = document.querySelector('.ai-panel .panel-header');
-        if (aiHeader) aiHeader.style.display = 'flex';
-        const trHeader = document.querySelector('.transcript-panel .panel-header');
-        if (trHeader) trHeader.style.display = 'flex';
-        const totalWords = state.transcriptLog.reduce((acc, l) => acc + l.text.split(' ').length, 0);
-        displays.statWords.textContent = totalWords + " words";
-        displays.statInsights.textContent = state.aiLog.length + " generated";
-        if (state.currentUser && totalWords > 0) {
-            const estMinutes = Math.max(1, (totalWords / 150)).toFixed(1);
-            const params = new URLSearchParams();
-            params.append('action', 'updateUsage');
-            params.append('email', state.currentUser.email);
-            params.append('minutes', estMinutes);
-            fetch(GOOGLE_URL, { method: 'POST', body: params, redirect: 'follow' }).catch(() => { });
-        }
+        combinedLogs.forEach(entry => {
+            output += `[${entry.time}] ${entry.speaker}:\n${entry.text}\n\n`;
+        });
 
-        // Auto-Upload Transcript to Google Drive
-        if (state.transcriptLog.length > 0) {
-            showToast("Saving session transcript securely...", 4000);
-
-            // 1. Compile the Document exactly like the download file
-            let output = "INTERVIEW Q&A SESSION LOG\n";
-            output += "=========================\n\n";
-
-            let combinedLogs = [];
-            state.transcriptLog.forEach(entry => {
-                combinedLogs.push({
-                    time: entry.timestamp,
-                    speaker: (entry.mode === 'USER') ? "YOU" : "INTERVIEWER",
-                    text: entry.text
-                });
-            });
-            state.aiLog.forEach(entry => {
-                let cleanText = entry.text;
-                const qMatch = cleanText.match(/^\[QUESTION:\s*(.*?)\]/s);
-                if (qMatch) cleanText = cleanText.substring(qMatch[0].length).trim();
-                combinedLogs.push({ time: entry.timestamp, speaker: "AI ASSISTANT", text: cleanText });
-            });
-
-            combinedLogs.sort((a, b) => {
-                return new Date('1970/01/01 ' + a.time) - new Date('1970/01/01 ' + b.time);
-            });
-
-            combinedLogs.forEach(entry => {
-                output += `[${entry.time}] ${entry.speaker}:\n${entry.text}\n\n`;
-            });
-
-            // 2. Send to Backend
-            try {
-                const params = new URLSearchParams();
-                params.append('action', 'uploadTranscript');
-                params.append('email', state.currentUser ? state.currentUser.email : "guest");
-                params.append('topic', state.topic || "Untitled Session");
-                params.append('transcript', output);
-
-                fetch(GOOGLE_URL, {
-                    method: 'POST',
-                    body: params,
-                    redirect: 'follow'
-                }).then(response => response.text())
-                    .then(text => {
-                        try {
-                            const data = JSON.parse(text);
-                            if (data.status === 'success') {
-                                showToast("Transcript saved securely!");
-                                console.log("Drive URL:", data.url);
-                            } else {
-                                console.error("Upload error response:", data.message);
-                            }
-                        } catch (e) {
-                            console.error("Failed to parse upload response", text);
-                        }
-                    });
-            } catch (err) {
-                console.error("Error initiating transcript upload", err);
-            }
-        }
-    }
-
-    function isSelfLoop(userText, lastAiText) {
-        if (!lastAiText || !userText) return false;
-        const cleanUser = userText.toLowerCase().replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ").trim();
-        const cleanAI = lastAiText.toLowerCase().replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ").trim();
-        if (cleanUser === cleanAI) return true;
-        const questionWords = ["why", "how", "what", "when", "where", "who", "which", "can", "could", "would", "explain", "tell", "elaborate"];
-        if (questionWords.includes(cleanUser.split(" ")[0])) return false;
-        if (cleanUser.split(" ").length < 3) return false;
-        if (cleanAI.includes(cleanUser) && (cleanUser.length > 20 || cleanUser.length > cleanAI.length * 0.8)) return true;
-        const aiWords = new Set(cleanAI.split(" "));
-        let matchCount = 0;
-        cleanUser.split(" ").forEach(w => { if (aiWords.has(w)) matchCount++; });
-        return (matchCount / cleanUser.split(" ").length) > 0.9;
-    }
-
-    function scrollToBottom(element) {
-        if (element) element.scrollTo({ top: element.scrollHeight, behavior: 'smooth' });
-    }
-
-    function showToast(msg, duration = 3000) {
-        const t = displays.toast;
-        if (!t) return;
-        t.textContent = msg;
-        t.classList.add('show');
-        t.classList.remove('hidden');
-        setTimeout(() => {
-            t.classList.remove('show');
-            setTimeout(() => t.classList.add('hidden'), 300);
-        }, duration);
-    }
-
-    window.receiveDesktopScreenshot = async function (dataUrl) {
-        if (!dataUrl?.startsWith('data:')) return showToast("Capture failed");
-        showToast("Analyzing screenshot...", 5000);
+        // 2. Send to Backend
         try {
-            const messages = [
-                { role: "system", content: "You are an expert technical candidate. Solve the problem in the image step-by-step in Markdown." },
-                { role: "user", content: [{ type: "text", text: "Solve this:" }, { type: "image_url", image_url: { url: dataUrl } }] }
-            ];
-            const response = await puter.ai.chat(messages, { stream: true, model: 'gpt-4o' });
-            let fullResponse = "";
-            const aiCard = document.createElement('div');
-            aiCard.className = 'ai-message vision-card';
-            displays.aiFeed.appendChild(aiCard);
-            displays.aiFeed.scrollTo({ top: aiCard.offsetTop - 20, behavior: 'smooth' });
-            for await (const part of response) {
-                fullResponse += part?.text || "";
-                aiCard.innerHTML = parseMarkdown(fullResponse);
-            }
-            state.aiLog.push(fullResponse);
-            state.chatHistory.push({ role: "assistant", content: fullResponse });
-            showToast("Solution generated!");
+            const params = new URLSearchParams();
+            params.append('action', 'uploadTranscript');
+            params.append('email', state.currentUser ? state.currentUser.email : "guest");
+            params.append('topic', state.topic || "Untitled Session");
+            params.append('transcript', output);
+
+            fetch(GOOGLE_URL, {
+                method: 'POST',
+                body: params,
+                redirect: 'follow'
+            }).then(response => response.text())
+                .then(text => {
+                    try {
+                        const data = JSON.parse(text);
+                        if (data.status === 'success') {
+                            showToast("Transcript saved securely!");
+                            console.log("Drive URL:", data.url);
+                        } else {
+                            console.error("Upload error response:", data.message);
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse upload response", text);
+                    }
+                });
         } catch (err) {
-            showToast("Vision Error: " + err.message);
+            console.error("Error initiating transcript upload", err);
         }
-    };
+    }
+}
 
-    window.addEventListener('load', init);
-    let currentRating = 0;
+function isSelfLoop(userText, lastAiText) {
+    if (!lastAiText || !userText) return false;
+    const cleanUser = userText.toLowerCase().replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ").trim();
+    const cleanAI = lastAiText.toLowerCase().replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ").trim();
+    if (cleanUser === cleanAI) return true;
+    const questionWords = ["why", "how", "what", "when", "where", "who", "which", "can", "could", "would", "explain", "tell", "elaborate"];
+    if (questionWords.includes(cleanUser.split(" ")[0])) return false;
+    if (cleanUser.split(" ").length < 3) return false;
+    if (cleanAI.includes(cleanUser) && (cleanUser.length > 20 || cleanUser.length > cleanAI.length * 0.8)) return true;
+    const aiWords = new Set(cleanAI.split(" "));
+    let matchCount = 0;
+    cleanUser.split(" ").forEach(w => { if (aiWords.has(w)) matchCount++; });
+    return (matchCount / cleanUser.split(" ").length) > 0.9;
+}
 
+function scrollToBottom(element) {
+    if (element) element.scrollTo({ top: element.scrollHeight, behavior: 'smooth' });
+}
+
+function showToast(msg, duration = 3000) {
+    const t = displays.toast;
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add('show');
+    t.classList.remove('hidden');
+    setTimeout(() => {
+        t.classList.remove('show');
+        setTimeout(() => t.classList.add('hidden'), 300);
+    }, duration);
+}
+
+window.receiveDesktopScreenshot = async function (dataUrl) {
+    if (!dataUrl?.startsWith('data:')) return showToast("Capture failed");
+    showToast("Analyzing screenshot...", 5000);
+    try {
+        const messages = [
+            { role: "system", content: "You are an expert technical candidate. Solve the problem in the image step-by-step in Markdown." },
+            { role: "user", content: [{ type: "text", text: "Solve this:" }, { type: "image_url", image_url: { url: dataUrl } }] }
+        ];
+        const response = await puter.ai.chat(messages, { stream: true, model: 'gpt-4o' });
+        let fullResponse = "";
+        const aiCard = document.createElement('div');
+        aiCard.className = 'ai-message vision-card';
+        displays.aiFeed.appendChild(aiCard);
+        displays.aiFeed.scrollTo({ top: aiCard.offsetTop - 20, behavior: 'smooth' });
+        for await (const part of response) {
+            fullResponse += part?.text || "";
+            aiCard.innerHTML = parseMarkdown(fullResponse);
+        }
+        state.aiLog.push(fullResponse);
+        state.chatHistory.push({ role: "assistant", content: fullResponse });
+        showToast("Solution generated!");
+    } catch (err) {
+        showToast("Vision Error: " + err.message);
+    }
+};
+
+let currentRating = 0;
+function setupFeedbackListeners() {
     document.querySelectorAll('.star').forEach(star => {
         star.addEventListener('click', (e) => {
             currentRating = parseInt(e.target.dataset.value);
             document.querySelectorAll('.star').forEach(s => {
                 const val = parseInt(s.dataset.value);
                 s.textContent = val <= currentRating ? 'star' : 'star_outline';
-                if (val <= currentRating) {
-                    s.style.color = '#FFD700';
+                s.style.color = val <= currentRating ? '#FFD700' : '';
+            });
+        });
+    });
+
+    const submitBtn = document.getElementById('submit-feedback-btn');
+    if (submitBtn) {
+        submitBtn.addEventListener('click', async (e) => {
+            const btn = e.target;
+            const comment = document.getElementById('feedback-comment').value.trim();
+            if (currentRating === 0 && !comment) return showToast("Please provide a rating or a comment");
+
+            setLoading(btn, true);
+            try {
+                const params = new URLSearchParams();
+                params.append('action', 'submitFeedback');
+                params.append('email', state.currentUser ? state.currentUser.email : 'guest');
+                params.append('topic', state.topic || 'Untitled Session');
+                params.append('rating', currentRating);
+                params.append('comment', comment);
+
+                const res = await fetch(GOOGLE_URL, { method: 'POST', body: params, redirect: 'follow' });
+                const data = JSON.parse(await res.text());
+                if (data.status === 'success') {
+                    showToast("Feedback submitted successfully.");
+                    document.getElementById('feedback-section').innerHTML = "<p style='color: var(--success); text-align: center; padding: 20px 0;'>Thank you for your feedback!</p>";
                 } else {
-                    s.style.color = '';
+                    showToast("Failed: " + data.message);
                 }
-            });
-        });
-    });
-
-    document.addEventListener('DOMContentLoaded', () => {
-        const submitBtn = document.getElementById('submit-feedback-btn');
-        if (submitBtn) {
-            submitBtn.addEventListener('click', async (e) => {
-                const btn = e.target;
-                const comment = document.getElementById('feedback-comment').value.trim();
-                if (currentRating === 0 && !comment) {
-                    showToast("Please provide a rating or a comment");
-                    return;
-                }
-                setLoading(btn, true);
-                try {
-                    const params = new URLSearchParams();
-                    params.append('action', 'submitFeedback');
-                    params.append('email', state.currentUser ? state.currentUser.email : 'guest');
-                    params.append('topic', state.topic || 'Untitled Session');
-                    params.append('rating', currentRating);
-                    params.append('comment', comment);
-
-                    const res = await fetch(GOOGLE_URL, {
-                        method: 'POST',
-                        body: params,
-                        redirect: 'follow'
-                    });
-                    const textData = await res.text();
-                    const data = JSON.parse(textData);
-                    if (data.status === 'success') {
-                        showToast("Feedback submitted successfully.");
-                        document.getElementById('feedback-section').innerHTML = "<p style='color: var(--success); text-align: center; padding: 20px 0;'>Thank you for your feedback!</p>";
-                    } else {
-                        showToast("Failed to submit feedback: " + data.message);
-                    }
-                } catch (err) {
-                    showToast("Error submitting feedback.");
-                    console.error(err);
-                } finally {
-                    setLoading(btn, false);
-                }
-            });
-        }
-    });
-
-    function scrollToBottom(element) {
-        if (!element) return;
-        element.scrollTo({
-            top: element.scrollHeight,
-            behavior: 'smooth'
+            } catch (err) {
+                showToast("Error submitting feedback.");
+            } finally {
+                setLoading(btn, false);
+            }
         });
     }
+}
 
-    function showToast(msg, duration = 3000) {
-        const t = displays.toast;
-        if (!t) return;
-        t.textContent = msg;
-        t.classList.add('show');
-        t.classList.remove('hidden');
-        setTimeout(() => {
-            t.classList.remove('show');
-            setTimeout(() => t.classList.add('hidden'), 300);
-        }, duration);
-    }
-
-    window.addEventListener('load', init);
+window.addEventListener('load', init);
