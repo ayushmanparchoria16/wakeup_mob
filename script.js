@@ -4,8 +4,6 @@
  */
 
 // --- Configuration & State ---
-const GOOGLE_URL = 'https://script.google.com/macros/s/AKfycby43nl9_mMl4L874fYORDY9Qx-2PoxjW9TGQ9OUYpRjmLR27Np_Gdc84WDYq1_8bEyv/exec';
-
 const CONFIG = {
     // Audio Analysis Settings
     MIN_DECIBELS: -45, // Threshold for detecting speech
