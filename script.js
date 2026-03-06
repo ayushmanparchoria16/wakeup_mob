@@ -35,8 +35,8 @@ const state = {
     currentSessionBuffer: "",
     currentUser: null,
 
-    micMode: 'INTERVIEWER',
-    activeRecMode: 'INTERVIEWER',
+    micMode: 'SPEECH',
+    activeRecMode: 'SPEECH',
     lastFinishedMode: null
 };
 
@@ -467,10 +467,10 @@ function setupSpeechRecognition() {
                     state.transcriptLog.push({
                         timestamp: new Date().toLocaleTimeString(),
                         text: text,
-                        mode: state.activeRecMode
+                        mode: 'SPEECH'
                     });
-                    addTranscriptBubble(text, state.activeRecMode);
-                    updateTranscriptUI("", "", state.activeRecMode); // Clear temp area
+                    addTranscriptBubble(text, 'SPEECH');
+                    updateTranscriptUI("", "", 'SPEECH'); // Clear temp area
                 }
             } else {
                 interimTranscript += transcript;
@@ -478,7 +478,7 @@ function setupSpeechRecognition() {
         }
 
         if (interimTranscript) {
-            updateTranscriptUI("", interimTranscript.trim(), state.activeRecMode);
+            updateTranscriptUI("", interimTranscript.trim(), 'SPEECH');
             state.pendingBuffer = interimTranscript.trim();
             state.silenceStartTime = Date.now();
             updateVadUI(true);
@@ -525,10 +525,10 @@ function startVisualizerLoop() {
             state.transcriptLog.push({
                 timestamp: new Date().toLocaleTimeString(),
                 text: text,
-                mode: state.activeRecMode
+                mode: 'SPEECH'
             });
-            addTranscriptBubble(text, state.activeRecMode);
-            updateTranscriptUI("", "", state.activeRecMode);
+            addTranscriptBubble(text, 'SPEECH');
+            updateTranscriptUI("", "", 'SPEECH');
         }
 
         state.analyser.getByteFrequencyData(dataArray);
@@ -571,8 +571,8 @@ async function startSession() {
     switchScreen('meeting');
 
     state.isRecording = true;
-    state.micMode = 'INTERVIEWER';
-    state.activeRecMode = 'INTERVIEWER';
+    state.micMode = 'SPEECH';
+    state.activeRecMode = 'SPEECH';
     state.lastFinishedMode = null;
 
     try {
@@ -675,23 +675,23 @@ async function quickReply() {
 function toggleMic() {
     if (!state.isRecording) {
         state.isRecording = true;
-        state.micMode = 'INTERVIEWER';
-        state.activeRecMode = 'INTERVIEWER';
+        state.micMode = 'SPEECH';
+        state.activeRecMode = 'SPEECH';
         if (state.recognition) try { state.recognition.start(); } catch (e) { }
         if (state.audioContext?.state === 'suspended') state.audioContext.resume();
         updateMicUI();
+        showToast("Mic Started - Click again to Answer Now");
         return;
     }
-    const oldMode = state.micMode;
-    state.micMode = (oldMode === 'INTERVIEWER') ? 'USER' : 'INTERVIEWER';
-    state.activeRecMode = state.micMode;
-    updateMicUI();
-    if (oldMode === 'INTERVIEWER' && state.micMode === 'USER') {
-        const buffer = state.currentSessionBuffer.trim();
-        if (buffer.length > 0) {
-            triggerAI(buffer);
-            state.currentSessionBuffer = "";
-        }
+
+    // "Answer Now" Logic
+    const buffer = state.currentSessionBuffer.trim();
+    if (buffer.length > 0) {
+        triggerAI(buffer);
+        state.currentSessionBuffer = "";
+        showToast("Answering Now...");
+    } else {
+        showToast("Nothing to answer yet - Keep talking!");
     }
 }
 
@@ -713,10 +713,10 @@ function updateTranscriptUI(finalT, interimT, mode = 'INTERVIEWER') {
         tempEl.style.opacity = '0.7';
         displays.transcriptFeed.appendChild(tempEl);
     }
-    const prefix = mode === 'USER' ? 'You' : 'Inv';
-    const strongTag = mode === 'USER' ? `<strong style="color: #64ffda;">${prefix}:</strong>` : `<strong>${prefix}:</strong>`;
+    const prefix = 'You'; // Simplified single prefix
+    const strongTag = `<strong style="color: #64ffda;">${prefix}:</strong>`;
     tempEl.innerHTML = `${strongTag} ${finalT} <span style='color:#888'>${interimT}</span>`;
-    if (mode === 'USER') tempEl.classList.add('user-segment');
+    tempEl.classList.add('user-segment');
     scrollToBottom(displays.transcriptFeed);
     if (finalT || interimT) {
         const trHeader = document.querySelector('.transcript-panel .panel-header');
@@ -734,11 +734,10 @@ function addTranscriptBubble(text, mode = 'INTERVIEWER') {
         lastItem.innerHTML += " " + text;
     } else {
         const p = document.createElement('p');
-        p.className = 'transcript-segment final';
+        p.className = 'transcript-segment final user-segment';
         p.dataset.mode = mode;
-        if (mode === 'USER') p.classList.add('user-segment');
-        const prefix = mode === 'USER' ? 'You' : 'Inv';
-        const strongTag = mode === 'USER' ? `<strong style="color: #64ffda;">${prefix}:</strong>` : `<strong>${prefix}:</strong>`;
+        const prefix = 'You';
+        const strongTag = `<strong style="color: #64ffda;">${prefix}:</strong>`;
         p.innerHTML = `${strongTag} ${text}`;
         feed.appendChild(p);
     }
@@ -748,14 +747,9 @@ function addTranscriptBubble(text, mode = 'INTERVIEWER') {
 function updateMicUI() {
     if (state.isRecording) {
         buttons.micToggle.classList.add('active');
-        if (state.micMode === 'INTERVIEWER') {
-            displays.status.innerHTML = "Listening to Interviewer...";
-            buttons.micToggle.style.backgroundColor = "#f44336";
-        } else {
-            displays.status.innerHTML = "Recording Your Answer...";
-            buttons.micToggle.style.backgroundColor = "transparent";
-            buttons.micToggle.style.border = "2px solid rgba(255,255,255,0.3)";
-        }
+        displays.status.innerHTML = "Listening...";
+        buttons.micToggle.style.backgroundColor = "var(--primary)"; // Constant active color
+        buttons.micToggle.style.border = "none";
     } else {
         buttons.micToggle.classList.remove('active');
         buttons.micToggle.style.backgroundColor = "";
