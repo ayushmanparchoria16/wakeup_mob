@@ -628,7 +628,13 @@ async function startSession() {
     state.activeRecMode = 'SPEECH';
     state.lastFinishedMode = null;
 
+    // Trigger Deepgram and Streaming automatically on start
+    initDeepgram().then(() => {
+        startStreaming();
+    });
+
     if (state.audioContext?.state === 'suspended') state.audioContext.resume();
+    updateMicUI();
 }
 
 async function handleKeyValidation() {
