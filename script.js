@@ -452,93 +452,101 @@ async function setupMobileFriendlyAudio() {
 }
 
 // --- Deepgram Implementation ---
-async function initDeepgram() {
-    if (!state.deepgramKey) {
-        showToast("Deepgram API Key is missing!");
-        return;
-    }
+function initDeepgram() {
+    return new Promise((resolve, reject) => {
+        if (!state.deepgramKey) {
+            showToast("Deepgram API Key is missing!");
+            return reject("No Key");
+        }
 
-    // Add debug status indicator if not present
-    let debugStatus = document.getElementById('asr-debug-status');
-    if (!debugStatus) {
-        debugStatus = document.createElement('div');
-        debugStatus.id = 'asr-debug-status';
-        debugStatus.style.cssText = "font-size: 11px; color: #888; padding: 10px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); margin-bottom: 10px; background: rgba(0,0,0,0.2);";
-        displays.transcriptFeed.prepend(debugStatus);
-    }
-    debugStatus.textContent = "Connecting to Deepgram...";
-    state.chunkCount = 0;
+        // Add debug status indicator if not present
+        let debugStatus = document.getElementById('asr-debug-status');
+        if (!debugStatus) {
+            debugStatus = document.createElement('div');
+            debugStatus.id = 'asr-debug-status';
+            debugStatus.style.cssText = "font-size: 11px; color: #888; padding: 10px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); margin-bottom: 10px; background: rgba(0,0,0,0.2);";
+            displays.transcriptFeed.prepend(debugStatus);
+        }
+        debugStatus.textContent = "Connecting to Deepgram...";
+        state.chunkCount = 0;
 
-    console.log("Initializing Deepgram...");
-    const url = 'wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&filler_words=true';
-    state.deepgramSocket = new WebSocket(url, ['token', state.deepgramKey]);
+        console.log("Initializing Deepgram...");
+        const url = 'wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&filler_words=true';
+        state.deepgramSocket = new WebSocket(url, ['token', state.deepgramKey]);
 
-    state.deepgramSocket.onopen = () => {
-        console.log("✅ Deepgram WebSocket opened");
-        debugStatus.textContent = "✅ Connected. Waiting for Audio...";
-        debugStatus.style.color = "#4ade80";
-        displays.vadStatus.textContent = "VAD: Listening (Deepgram)";
-        displays.vadStatus.classList.remove('hidden');
+        state.deepgramSocket.onopen = () => {
+            console.log("✅ Deepgram WebSocket opened");
+            debugStatus.textContent = "✅ Connected. Waiting for Audio...";
+            debugStatus.style.color = "#4ade80";
+            displays.vadStatus.textContent = "VAD: Listening (Deepgram)";
+            displays.vadStatus.classList.remove('hidden');
 
-        // Remove placeholder immediately on connect
-        const placeholder = displays.transcriptFeed.querySelector('.placeholder-text');
-        if (placeholder) placeholder.remove();
-    };
+            // Remove placeholder immediately on connect
+            const placeholder = displays.transcriptFeed.querySelector('.placeholder-text');
+            if (placeholder) placeholder.remove();
+            resolve();
+        };
 
-    state.deepgramSocket.onmessage = (message) => {
-        try {
-            const received = JSON.parse(message.data);
-            if (received.type === 'Metadata') return;
+        state.deepgramSocket.onmessage = (message) => {
+            try {
+                const received = JSON.parse(message.data);
+                if (received.type === 'Metadata') return;
 
-            if (!received.channel || !received.channel.alternatives) return;
+                if (!received.channel || !received.channel.alternatives) return;
 
-            const transcript = received.channel.alternatives[0].transcript;
-            if (transcript) {
-                debugStatus.textContent = `📡 Receiving: "${transcript.substring(0, 20)}..."`;
-                debugStatus.style.color = "#64ffda";
-            }
-
-            if (transcript && received.is_final) {
-                const text = transcript.trim();
-                if (text.length > 0) {
-                    state.currentSessionBuffer += text + " ";
-                    state.transcriptLog.push({
-                        timestamp: new Date().toLocaleTimeString(),
-                        text: text,
-                        mode: 'SPEECH'
-                    });
-                    addTranscriptBubble(text, 'SPEECH');
-                    updateTranscriptUI("", "", 'SPEECH');
-
-                    state.pendingBuffer = "";
-                    state.silenceStartTime = 0;
+                const transcript = received.channel.alternatives[0].transcript;
+                if (transcript) {
+                    debugStatus.textContent = `📡 Receiving: "${transcript.substring(0, 20)}..."`;
+                    debugStatus.style.color = "#64ffda";
                 }
-            } else if (transcript) {
-                updateTranscriptUI("", transcript.trim(), 'SPEECH');
-                state.pendingBuffer = transcript.trim();
-                state.silenceStartTime = Date.now();
-                updateVadUI(true);
+
+                if (transcript && received.is_final) {
+                    const text = transcript.trim();
+                    if (text.length > 0) {
+                        state.currentSessionBuffer += text + " ";
+                        state.transcriptLog.push({
+                            timestamp: new Date().toLocaleTimeString(),
+                            text: text,
+                            mode: 'SPEECH'
+                        });
+                        addTranscriptBubble(text, 'SPEECH');
+                        updateTranscriptUI("", "", 'SPEECH');
+
+                        state.pendingBuffer = "";
+                        state.silenceStartTime = 0;
+                    }
+                } else if (transcript) {
+                    updateTranscriptUI("", transcript.trim(), 'SPEECH');
+                    state.pendingBuffer = transcript.trim();
+                    state.silenceStartTime = Date.now();
+                    updateVadUI(true);
+                }
+            } catch (e) {
+                console.error("Deepgram message parse error:", e);
             }
-        } catch (e) {
-            console.error("Deepgram message parse error:", e);
-        }
-    };
+        };
 
-    state.deepgramSocket.onerror = (err) => {
-        console.error("❌ Deepgram WebSocket Error:", err);
-        debugStatus.textContent = "❌ Connection Error - Check Key";
-        debugStatus.style.color = "#ff5252";
-        showToast("Deepgram Connection Error");
-    };
+        state.deepgramSocket.onerror = (err) => {
+            console.error("❌ Deepgram WebSocket Error:", err);
+            debugStatus.textContent = "❌ Connection Error - Check Key";
+            debugStatus.style.color = "#ff5252";
+            reject(err);
+        };
 
-    state.deepgramSocket.onclose = (event) => {
-        console.log("Deepgram WebSocket closed:", event.code, event.reason);
-        debugStatus.textContent = `⚠️ Closed (${event.code})`;
-        debugStatus.style.color = "#fbbf24";
-        if (event.code !== 1000 && state.isRecording) {
-            showToast("Deepgram Connection Closed Unexpectedly");
-        }
-    };
+        state.deepgramSocket.onclose = (event) => {
+            console.log("Deepgram WebSocket closed:", event.code, event.reason);
+            debugStatus.textContent = `⚠️ Closed (${event.code})`;
+            debugStatus.style.color = "#fbbf24";
+
+            // Simple re-connection logic for unexpected closure
+            if (event.code !== 1000 && state.isRecording) {
+                console.log("Attempting re-connection...");
+                setTimeout(() => {
+                    if (state.isRecording) toggleMic();
+                }, 2000);
+            }
+        };
+    });
 }
 
 async function startStreaming() {
