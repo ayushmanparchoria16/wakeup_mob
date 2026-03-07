@@ -458,55 +458,67 @@ async function initDeepgram() {
         return;
     }
 
+    console.log("Initializing Deepgram...");
     const url = 'wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&filler_words=true';
     state.deepgramSocket = new WebSocket(url, ['token', state.deepgramKey]);
 
     state.deepgramSocket.onopen = () => {
-        console.log("Deepgram WebSocket opened");
-        if (window.electronAPI) window.electronAPI.startAsr();
+        console.log("✅ Deepgram WebSocket opened");
         displays.vadStatus.textContent = "VAD: Listening (Deepgram)";
         displays.vadStatus.classList.remove('hidden');
     };
 
     state.deepgramSocket.onmessage = (message) => {
-        const received = JSON.parse(message.data);
-        if (!received.channel || !received.channel.alternatives) return;
-
-        const transcript = received.channel.alternatives[0].transcript;
-
-        if (transcript && received.is_final) {
-            const text = transcript.trim();
-            if (text.length > 0) {
-                state.currentSessionBuffer += text + " ";
-                state.transcriptLog.push({
-                    timestamp: new Date().toLocaleTimeString(),
-                    text: text,
-                    mode: 'SPEECH'
-                });
-                addTranscriptBubble(text, 'SPEECH');
-                updateTranscriptUI("", "", 'SPEECH');
-
-                state.pendingBuffer = "";
-                state.silenceStartTime = 0;
+        try {
+            const received = JSON.parse(message.data);
+            if (received.type === 'Metadata') {
+                console.log("Deepgram Metadata:", received);
+                return;
             }
-        } else if (transcript) {
-            updateTranscriptUI("", transcript.trim(), 'SPEECH');
-            state.pendingBuffer = transcript.trim();
-            state.silenceStartTime = Date.now();
-            updateVadUI(true);
-        } else {
-            updateVadUI(false);
+
+            if (!received.channel || !received.channel.alternatives) return;
+
+            const transcript = received.channel.alternatives[0].transcript;
+            console.log("Deepgram Transcript:", transcript, "Final:", received.is_final);
+
+            if (transcript && received.is_final) {
+                const text = transcript.trim();
+                if (text.length > 0) {
+                    state.currentSessionBuffer += text + " ";
+                    state.transcriptLog.push({
+                        timestamp: new Date().toLocaleTimeString(),
+                        text: text,
+                        mode: 'SPEECH'
+                    });
+                    addTranscriptBubble(text, 'SPEECH');
+                    updateTranscriptUI("", "", 'SPEECH');
+
+                    state.pendingBuffer = "";
+                    state.silenceStartTime = 0;
+                }
+            } else if (transcript) {
+                updateTranscriptUI("", transcript.trim(), 'SPEECH');
+                state.pendingBuffer = transcript.trim();
+                state.silenceStartTime = Date.now();
+                updateVadUI(true);
+            } else {
+                updateVadUI(false);
+            }
+        } catch (e) {
+            console.error("Deepgram message parse error:", e);
         }
     };
 
     state.deepgramSocket.onerror = (err) => {
-        console.error("Deepgram Error:", err);
+        console.error("❌ Deepgram WebSocket Error:", err);
         showToast("Deepgram Connection Error");
     };
 
-    state.deepgramSocket.onclose = () => {
-        console.log("Deepgram WebSocket closed");
-        if (window.electronAPI) window.electronAPI.stopAsr();
+    state.deepgramSocket.onclose = (event) => {
+        console.log("Deepgram WebSocket closed:", event.code, event.reason);
+        if (event.code !== 1000 && state.isRecording) {
+            showToast("Deepgram Connection Closed Unexpectedly");
+        }
     };
 }
 
@@ -516,16 +528,26 @@ async function startStreaming() {
             state.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
 
-        // Use MediaRecorder for broad compatibility
-        state.mediaRecorder = new MediaRecorder(state.stream, { mimeType: 'audio/webm' });
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
+            ? 'audio/webm; codecs=opus'
+            : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg; codecs=opus');
+
+        console.log("Using MimeType:", mimeType);
+        state.mediaRecorder = new MediaRecorder(state.stream, { mimeType });
 
         state.mediaRecorder.ondataavailable = (event) => {
             if (event.data.size > 0 && state.deepgramSocket?.readyState === 1) {
                 state.deepgramSocket.send(event.data);
+                // Visual heartbeat for data sending
+                displays.vadStatus.style.borderBottom = "2px solid #64ffda";
+                setTimeout(() => displays.vadStatus.style.borderBottom = "none", 100);
             }
         };
 
-        state.mediaRecorder.start(250); // Send chunks every 250ms
+        state.mediaRecorder.onerror = (e) => console.error("MediaRecorder Error:", e);
+        state.mediaRecorder.onstart = () => console.log("MediaRecorder Started");
+
+        state.mediaRecorder.start(250);
     } catch (err) {
         console.error("Microphone Error:", err);
         showToast("Could not access microphone");
