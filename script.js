@@ -473,6 +473,10 @@ function setupSpeechRecognition() {
                     });
                     addTranscriptBubble(text, 'SPEECH');
                     updateTranscriptUI("", "", 'SPEECH'); // Clear temp area
+
+                    // [BUGFIX] Clear pending buffer to prevent double finalization by silence loop
+                    state.pendingBuffer = "";
+                    state.silenceStartTime = 0;
                 }
             } else {
                 interimTranscript += transcript;
