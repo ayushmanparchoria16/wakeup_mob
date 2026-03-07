@@ -458,12 +458,24 @@ async function initDeepgram() {
         return;
     }
 
+    // Add debug status indicator if not present
+    let debugStatus = document.getElementById('asr-debug-status');
+    if (!debugStatus) {
+        debugStatus = document.createElement('div');
+        debugStatus.id = 'asr-debug-status';
+        debugStatus.style.cssText = "font-size: 11px; color: #888; padding: 5px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); margin-bottom: 10px;";
+        displays.transcriptFeed.prepend(debugStatus);
+    }
+    debugStatus.textContent = "Connecting to Deepgram...";
+
     console.log("Initializing Deepgram...");
     const url = 'wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&filler_words=true';
     state.deepgramSocket = new WebSocket(url, ['token', state.deepgramKey]);
 
     state.deepgramSocket.onopen = () => {
         console.log("✅ Deepgram WebSocket opened");
+        debugStatus.textContent = "✅ Connected to Deepgram";
+        debugStatus.style.color = "#4ade80";
         displays.vadStatus.textContent = "VAD: Listening (Deepgram)";
         displays.vadStatus.classList.remove('hidden');
     };
@@ -471,15 +483,19 @@ async function initDeepgram() {
     state.deepgramSocket.onmessage = (message) => {
         try {
             const received = JSON.parse(message.data);
-            if (received.type === 'Metadata') {
-                console.log("Deepgram Metadata:", received);
-                return;
-            }
+            if (received.type === 'Metadata') return;
 
             if (!received.channel || !received.channel.alternatives) return;
 
             const transcript = received.channel.alternatives[0].transcript;
-            console.log("Deepgram Transcript:", transcript, "Final:", received.is_final);
+            if (transcript) {
+                // Remove placeholder on first result
+                const placeholder = displays.transcriptFeed.querySelector('.placeholder-text');
+                if (placeholder) placeholder.remove();
+
+                debugStatus.textContent = "📡 Receiving Audio...";
+                debugStatus.style.color = "#64ffda";
+            }
 
             if (transcript && received.is_final) {
                 const text = transcript.trim();
@@ -511,11 +527,15 @@ async function initDeepgram() {
 
     state.deepgramSocket.onerror = (err) => {
         console.error("❌ Deepgram WebSocket Error:", err);
+        debugStatus.textContent = "❌ Connection Error";
+        debugStatus.style.color = "#ff5252";
         showToast("Deepgram Connection Error");
     };
 
     state.deepgramSocket.onclose = (event) => {
         console.log("Deepgram WebSocket closed:", event.code, event.reason);
+        debugStatus.textContent = "⚠️ Connection Closed";
+        debugStatus.style.color = "#fbbf24";
         if (event.code !== 1000 && state.isRecording) {
             showToast("Deepgram Connection Closed Unexpectedly");
         }
@@ -528,9 +548,9 @@ async function startStreaming() {
             state.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
 
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm; codecs=opus')
-            ? 'audio/webm; codecs=opus'
-            : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg; codecs=opus');
+        // Try to find a supported mimeType
+        const types = ['audio/webm; codecs=opus', 'audio/webm', 'audio/ogg; codecs=opus', 'audio/wav'];
+        let mimeType = types.find(t => MediaRecorder.isTypeSupported(t));
 
         console.log("Using MimeType:", mimeType);
         state.mediaRecorder = new MediaRecorder(state.stream, { mimeType });
@@ -538,9 +558,14 @@ async function startStreaming() {
         state.mediaRecorder.ondataavailable = (event) => {
             if (event.data.size > 0 && state.deepgramSocket?.readyState === 1) {
                 state.deepgramSocket.send(event.data);
-                // Visual heartbeat for data sending
-                displays.vadStatus.style.borderBottom = "2px solid #64ffda";
-                setTimeout(() => displays.vadStatus.style.borderBottom = "none", 100);
+                // Visual heartbeat
+                const debugStatus = document.getElementById('asr-debug-status');
+                if (debugStatus) {
+                    debugStatus.textContent = "📡 Data Sending...";
+                    setTimeout(() => {
+                        if (state.deepgramSocket?.readyState === 1) debugStatus.textContent = "✅ Connected to Deepgram";
+                    }, 150);
+                }
             }
         };
 
