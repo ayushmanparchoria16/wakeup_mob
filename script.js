@@ -132,7 +132,7 @@ function init() {
 
     if (buttons.screenshot) {
         buttons.screenshot.addEventListener('click', () => {
-            if (window.ipcRenderer) window.ipcRenderer.send('take-screenshot');
+            if (window.electronAPI) window.electronAPI.takeScreenshot();
             else showToast("Screenshot only available in Desktop App");
         });
     }
@@ -453,6 +453,7 @@ function setupSpeechRecognition() {
         state.activeRecMode = state.micMode;
         displays.vadStatus.textContent = "VAD: Listening";
         displays.vadStatus.classList.remove('hidden');
+        if (window.electronAPI) window.electronAPI.startAsr();
     };
 
     state.recognition.onresult = (event) => {
@@ -490,8 +491,12 @@ function setupSpeechRecognition() {
 
     state.recognition.onerror = (event) => {
         console.error("Speech Recognition Error:", event.error);
+        if (window.electronAPI) console.log("Renderer: Speech Recognition Error:", event.error);
+
         if (event.error === 'not-allowed') {
             showToast("Microphone access denied for Speech Recognition.");
+        } else if (event.error === 'network') {
+            showToast("Transcription Network Error. Check your connection.");
         }
     };
 
@@ -500,10 +505,11 @@ function setupSpeechRecognition() {
             try {
                 setTimeout(() => {
                     if (state.isRecording) state.recognition.start();
-                }, 10);
+                }, 100);
             } catch (e) { }
         } else {
             displays.vadStatus.textContent = "VAD: Stopped";
+            if (window.electronAPI) window.electronAPI.stopAsr();
         }
     };
 }
