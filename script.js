@@ -463,10 +463,11 @@ async function initDeepgram() {
     if (!debugStatus) {
         debugStatus = document.createElement('div');
         debugStatus.id = 'asr-debug-status';
-        debugStatus.style.cssText = "font-size: 11px; color: #888; padding: 5px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); margin-bottom: 10px;";
+        debugStatus.style.cssText = "font-size: 11px; color: #888; padding: 10px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); margin-bottom: 10px; background: rgba(0,0,0,0.2);";
         displays.transcriptFeed.prepend(debugStatus);
     }
     debugStatus.textContent = "Connecting to Deepgram...";
+    state.chunkCount = 0;
 
     console.log("Initializing Deepgram...");
     const url = 'wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&filler_words=true';
@@ -474,10 +475,14 @@ async function initDeepgram() {
 
     state.deepgramSocket.onopen = () => {
         console.log("✅ Deepgram WebSocket opened");
-        debugStatus.textContent = "✅ Connected to Deepgram";
+        debugStatus.textContent = "✅ Connected. Waiting for Audio...";
         debugStatus.style.color = "#4ade80";
         displays.vadStatus.textContent = "VAD: Listening (Deepgram)";
         displays.vadStatus.classList.remove('hidden');
+
+        // Remove placeholder immediately on connect
+        const placeholder = displays.transcriptFeed.querySelector('.placeholder-text');
+        if (placeholder) placeholder.remove();
     };
 
     state.deepgramSocket.onmessage = (message) => {
@@ -489,11 +494,7 @@ async function initDeepgram() {
 
             const transcript = received.channel.alternatives[0].transcript;
             if (transcript) {
-                // Remove placeholder on first result
-                const placeholder = displays.transcriptFeed.querySelector('.placeholder-text');
-                if (placeholder) placeholder.remove();
-
-                debugStatus.textContent = "📡 Receiving Audio...";
+                debugStatus.textContent = `📡 Receiving: "${transcript.substring(0, 20)}..."`;
                 debugStatus.style.color = "#64ffda";
             }
 
@@ -517,8 +518,6 @@ async function initDeepgram() {
                 state.pendingBuffer = transcript.trim();
                 state.silenceStartTime = Date.now();
                 updateVadUI(true);
-            } else {
-                updateVadUI(false);
             }
         } catch (e) {
             console.error("Deepgram message parse error:", e);
@@ -527,14 +526,14 @@ async function initDeepgram() {
 
     state.deepgramSocket.onerror = (err) => {
         console.error("❌ Deepgram WebSocket Error:", err);
-        debugStatus.textContent = "❌ Connection Error";
+        debugStatus.textContent = "❌ Connection Error - Check Key";
         debugStatus.style.color = "#ff5252";
         showToast("Deepgram Connection Error");
     };
 
     state.deepgramSocket.onclose = (event) => {
         console.log("Deepgram WebSocket closed:", event.code, event.reason);
-        debugStatus.textContent = "⚠️ Connection Closed";
+        debugStatus.textContent = `⚠️ Closed (${event.code})`;
         debugStatus.style.color = "#fbbf24";
         if (event.code !== 1000 && state.isRecording) {
             showToast("Deepgram Connection Closed Unexpectedly");
@@ -558,18 +557,21 @@ async function startStreaming() {
         state.mediaRecorder.ondataavailable = (event) => {
             if (event.data.size > 0 && state.deepgramSocket?.readyState === 1) {
                 state.deepgramSocket.send(event.data);
-                // Visual heartbeat
+                state.chunkCount++;
+
                 const debugStatus = document.getElementById('asr-debug-status');
-                if (debugStatus) {
-                    debugStatus.textContent = "📡 Data Sending...";
-                    setTimeout(() => {
-                        if (state.deepgramSocket?.readyState === 1) debugStatus.textContent = "✅ Connected to Deepgram";
-                    }, 150);
+                if (debugStatus && state.chunkCount % 4 === 0) { // Update every ~1s
+                    debugStatus.textContent = `✅ Streaming: ${state.chunkCount} chunks sent`;
+                    debugStatus.style.color = "#4ade80";
                 }
             }
         };
 
-        state.mediaRecorder.onerror = (e) => console.error("MediaRecorder Error:", e);
+        state.mediaRecorder.onerror = (e) => {
+            console.error("MediaRecorder Error:", e);
+            const debugStatus = document.getElementById('asr-debug-status');
+            if (debugStatus) debugStatus.textContent = "❌ Mic Stream Error";
+        };
         state.mediaRecorder.onstart = () => console.log("MediaRecorder Started");
 
         state.mediaRecorder.start(250);
