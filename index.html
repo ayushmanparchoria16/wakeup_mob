@@ -108,10 +108,23 @@
                     <!-- Deepgram Config -->
                     <div class="input-group"
                         style="text-align: left; margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
-                        <label style="color: var(--accent); display: flex; align-items: center; gap: 5px;">
-                            <span class="material-icons-round" style="font-size: 18px;">vpn_key</span> Deepgram API Key
+                        <label
+                            style="color: var(--accent); display: flex; align-items: center; justify-content: space-between; gap: 5px;">
+                            <span style="display: flex; align-items: center; gap: 5px;">
+                                <span class="material-icons-round" style="font-size: 18px;">vpn_key</span> Deepgram API
+                                Key
+                            </span>
+                            <span id="key-status" class="hidden" style="font-size: 14px;">
+                                <span class="material-icons-round"
+                                    style="color: #4ade80; font-size: 18px;">check_circle</span>
+                            </span>
                         </label>
-                        <input type="password" id="deepgram-key-input" placeholder="Enter your Deepgram API Key">
+                        <div style="display: flex; gap: 8px;">
+                            <input type="password" id="deepgram-key-input" placeholder="Enter your Deepgram API Key"
+                                style="flex: 1;">
+                            <button id="validate-key-btn" class="secondary-btn"
+                                style="padding: 0 15px; font-size: 0.8rem; min-width: 80px;">Check</button>
+                        </div>
                         <div class="setup-steps"
                             style="margin-top: 10px; font-size: 0.75rem; color: var(--text-muted); line-height: 1.4;">
                             <p style="margin-bottom: 5px; font-weight: 600; color: var(--text-main);">How to get your
@@ -127,7 +140,7 @@
                     </div>
 
                     <div class="controls-start" style="justify-content: center; margin-top: 20px;">
-                        <button id="start-btn" class="primary-btn">
+                        <button id="start-btn" class="primary-btn" disabled title="Validate Deepgram Key first">
                             <span class="icon">▶</span> Start Session
                         </button>
                     </div>

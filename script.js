@@ -80,7 +80,8 @@ const buttons = {
     forgotSubmit: document.getElementById('forgot-btn'),
     backLogin: document.getElementById('back-to-login-btn'),
     logout: document.getElementById('logout-link'),
-    switchAccount: document.getElementById('switch-account-link')
+    switchAccount: document.getElementById('switch-account-link'),
+    validateKey: document.getElementById('validate-key-btn')
 };
 
 const displays = {
@@ -97,7 +98,8 @@ const displays = {
     // Forms
     loginForm: document.getElementById('login-form'),
     regForm: document.getElementById('register-form'),
-    forgotForm: document.getElementById('forgot-form')
+    forgotForm: document.getElementById('forgot-form'),
+    keyStatus: document.getElementById('key-status')
 };
 
 // --- Initialization ---
@@ -130,6 +132,18 @@ function init() {
     buttons.micToggle.addEventListener('click', toggleMic);
     buttons.download.addEventListener('click', downloadTranscript);
     buttons.clearExit.addEventListener('click', clearAndExit);
+
+    if (buttons.validateKey) {
+        buttons.validateKey.addEventListener('click', handleKeyValidation);
+    }
+
+    if (inputs.deepgramKey) {
+        inputs.deepgramKey.addEventListener('input', () => {
+            // Auto-disable start if key changes
+            buttons.start.disabled = true;
+            displays.keyStatus.classList.add('hidden');
+        });
+    }
 
     // Auth Listeners
     setupAuthListeners();
@@ -592,18 +606,14 @@ async function startSession() {
         return;
     }
 
-    state.topic = inputs.topic.value.trim() || "Untitled Meeting";
-    if (!state.topic) {
-        showToast("Please enter a meeting topic.");
-        return;
-    }
+    const topic = inputs.topic.value.trim() || "Untitled Meeting";
+    state.topic = topic;
 
     if (!puter.auth.isSignedIn()) await puter.auth.signIn();
 
     const audioOk = await setupMobileFriendlyAudio();
     if (!audioOk) return;
 
-    state.topic = topic;
     state.chatHistory = [];
     state.transcriptLog = [];
     state.aiLog = [];
@@ -619,6 +629,37 @@ async function startSession() {
     state.lastFinishedMode = null;
 
     if (state.audioContext?.state === 'suspended') state.audioContext.resume();
+}
+
+async function handleKeyValidation() {
+    const key = inputs.deepgramKey.value.trim();
+    if (!key) return showToast("Please enter a key first");
+
+    setLoading(buttons.validateKey, true);
+    try {
+        // Deepgram doesn't have a simple "is this key valid" GET, 
+        // but fetching projects is a reliable way to check validity.
+        const res = await fetch('https://api.deepgram.com/v1/projects', {
+            headers: { 'Authorization': `Token ${key}` }
+        });
+
+        if (res.ok) {
+            state.deepgramKey = key;
+            localStorage.setItem('deepgram_api_key', key);
+            buttons.start.disabled = false;
+            buttons.start.title = "Start Meeting";
+            displays.keyStatus.classList.remove('hidden');
+            showToast("✅ Deepgram Key Validated!", 2000);
+        } else {
+            throw new Error("Invalid API Key");
+        }
+    } catch (err) {
+        showToast("❌ Invalid Deepgram Key", 3000);
+        buttons.start.disabled = true;
+        displays.keyStatus.classList.add('hidden');
+    } finally {
+        setLoading(buttons.validateKey, false);
+    }
 }
 
 // --- AI Integration ---
