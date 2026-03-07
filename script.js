@@ -636,25 +636,42 @@ async function handleKeyValidation() {
     if (!key) return showToast("Please enter a key first");
 
     setLoading(buttons.validateKey, true);
+
+    // Attempt validation via WebSocket (CORS-friendly & Functional Test)
     try {
-        // Deepgram doesn't have a simple "is this key valid" GET, 
-        // but fetching projects is a reliable way to check validity.
-        const res = await fetch('https://api.deepgram.com/v1/projects', {
-            headers: { 'Authorization': `Token ${key}` }
+        const socket = new WebSocket('wss://api.deepgram.com/v1/listen', ['token', key]);
+
+        const validationPromise = new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                socket.onopen = null;
+                socket.onerror = null;
+                socket.close();
+                reject(new Error("Validation timeout"));
+            }, 5000);
+
+            socket.onopen = () => {
+                clearTimeout(timeout);
+                socket.close();
+                resolve(true);
+            };
+
+            socket.onerror = () => {
+                clearTimeout(timeout);
+                reject(new Error("Connection failed"));
+            };
         });
 
-        if (res.ok) {
-            state.deepgramKey = key;
-            localStorage.setItem('deepgram_api_key', key);
-            buttons.start.disabled = false;
-            buttons.start.title = "Start Meeting";
-            displays.keyStatus.classList.remove('hidden');
-            showToast("✅ Deepgram Key Validated!", 2000);
-        } else {
-            throw new Error("Invalid API Key");
-        }
+        await validationPromise;
+
+        state.deepgramKey = key;
+        localStorage.setItem('deepgram_api_key', key);
+        buttons.start.disabled = false;
+        buttons.start.title = "Start Meeting";
+        displays.keyStatus.classList.remove('hidden');
+        showToast("✅ Deepgram Key Validated!", 2000);
     } catch (err) {
-        showToast("❌ Invalid Deepgram Key", 3000);
+        console.error("Deepgram Validation Error:", err);
+        showToast("❌ Invalid Key or Connection Issue", 3000);
         buttons.start.disabled = true;
         displays.keyStatus.classList.add('hidden');
     } finally {
