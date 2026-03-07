@@ -34,6 +34,9 @@ const state = {
 
     currentSessionBuffer: "",
     currentUser: null,
+    deepgramKey: localStorage.getItem('deepgram_api_key') || '',
+    deepgramSocket: null,
+    mediaRecorder: null,
 
     micMode: 'SPEECH',
     activeRecMode: 'SPEECH',
@@ -56,7 +59,8 @@ const inputs = {
     regName: document.getElementById('register-name'),
     regEmail: document.getElementById('register-email'),
     regPass: document.getElementById('register-password'),
-    forgotEmail: document.getElementById('forgot-email')
+    forgotEmail: document.getElementById('forgot-email'),
+    deepgramKey: document.getElementById('deepgram-key-input')
 };
 
 const buttons = {
@@ -418,10 +422,7 @@ async function setupMobileFriendlyAudio() {
         state.analyser.fftSize = 256;
         source.connect(state.analyser);
 
-        // 2. Setup Web Speech API for local transcription
-        setupSpeechRecognition();
-
-        // 3. Start our custom visualizer loop
+        // 2. Start our custom visualizer loop
         startVisualizerLoop();
 
         showToast("Audio Ready!");
@@ -436,56 +437,47 @@ async function setupMobileFriendlyAudio() {
     }
 }
 
-function setupSpeechRecognition() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-        showToast("Speech Recognition not supported in this browser. Please use Chrome or Edge.");
+// --- Deepgram Implementation ---
+async function initDeepgram() {
+    if (!state.deepgramKey) {
+        showToast("Deepgram API Key is missing!");
         return;
     }
 
-    state.recognition = new SpeechRecognition();
-    state.recognition.continuous = true;
-    state.recognition.interimResults = true;
-    state.recognition.lang = 'en-US'; // Or user configurable
+    const url = 'wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&filler_words=true';
+    state.deepgramSocket = new WebSocket(url, ['token', state.deepgramKey]);
 
-    state.recognition.onstart = () => {
-        state.isSpeaking = false;
-        state.activeRecMode = state.micMode;
-        displays.vadStatus.textContent = "VAD: Listening";
-        displays.vadStatus.classList.remove('hidden');
+    state.deepgramSocket.onopen = () => {
+        console.log("Deepgram WebSocket opened");
         if (window.electronAPI) window.electronAPI.startAsr();
+        displays.vadStatus.textContent = "VAD: Listening (Deepgram)";
+        displays.vadStatus.classList.remove('hidden');
     };
 
-    state.recognition.onresult = (event) => {
-        if (!state.isRecording) return;
+    state.deepgramSocket.onmessage = (message) => {
+        const received = JSON.parse(message.data);
+        if (!received.channel || !received.channel.alternatives) return;
 
-        let interimTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-                const text = transcript.trim();
-                if (text.length > 0) {
-                    state.currentSessionBuffer += text + " ";
-                    state.transcriptLog.push({
-                        timestamp: new Date().toLocaleTimeString(),
-                        text: text,
-                        mode: 'SPEECH'
-                    });
-                    addTranscriptBubble(text, 'SPEECH');
-                    updateTranscriptUI("", "", 'SPEECH'); // Clear temp area
+        const transcript = received.channel.alternatives[0].transcript;
 
-                    // [BUGFIX] Clear pending buffer to prevent double finalization by silence loop
-                    state.pendingBuffer = "";
-                    state.silenceStartTime = 0;
-                }
-            } else {
-                interimTranscript += transcript;
+        if (transcript && received.is_final) {
+            const text = transcript.trim();
+            if (text.length > 0) {
+                state.currentSessionBuffer += text + " ";
+                state.transcriptLog.push({
+                    timestamp: new Date().toLocaleTimeString(),
+                    text: text,
+                    mode: 'SPEECH'
+                });
+                addTranscriptBubble(text, 'SPEECH');
+                updateTranscriptUI("", "", 'SPEECH');
+
+                state.pendingBuffer = "";
+                state.silenceStartTime = 0;
             }
-        }
-
-        if (interimTranscript) {
-            updateTranscriptUI("", interimTranscript.trim(), 'SPEECH');
-            state.pendingBuffer = interimTranscript.trim();
+        } else if (transcript) {
+            updateTranscriptUI("", transcript.trim(), 'SPEECH');
+            state.pendingBuffer = transcript.trim();
             state.silenceStartTime = Date.now();
             updateVadUI(true);
         } else {
@@ -493,29 +485,54 @@ function setupSpeechRecognition() {
         }
     };
 
-    state.recognition.onerror = (event) => {
-        console.error("Speech Recognition Error:", event.error);
-        if (window.electronAPI) console.log("Renderer: Speech Recognition Error:", event.error);
-
-        if (event.error === 'not-allowed') {
-            showToast("Microphone access denied for Speech Recognition.");
-        } else if (event.error === 'network') {
-            showToast("Transcription Network Error. Check your connection.");
-        }
+    state.deepgramSocket.onerror = (err) => {
+        console.error("Deepgram Error:", err);
+        showToast("Deepgram Connection Error");
     };
 
-    state.recognition.onend = () => {
-        if (state.isRecording) {
-            try {
-                setTimeout(() => {
-                    if (state.isRecording) state.recognition.start();
-                }, 100);
-            } catch (e) { }
-        } else {
-            displays.vadStatus.textContent = "VAD: Stopped";
-            if (window.electronAPI) window.electronAPI.stopAsr();
-        }
+    state.deepgramSocket.onclose = () => {
+        console.log("Deepgram WebSocket closed");
+        if (window.electronAPI) window.electronAPI.stopAsr();
     };
+}
+
+async function startStreaming() {
+    try {
+        if (!state.stream) {
+            state.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+
+        // Use MediaRecorder for broad compatibility
+        state.mediaRecorder = new MediaRecorder(state.stream, { mimeType: 'audio/webm' });
+
+        state.mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0 && state.deepgramSocket?.readyState === 1) {
+                state.deepgramSocket.send(event.data);
+            }
+        };
+
+        state.mediaRecorder.start(250); // Send chunks every 250ms
+    } catch (err) {
+        console.error("Microphone Error:", err);
+        showToast("Could not access microphone");
+    }
+}
+
+function stopStreaming() {
+    if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
+        state.mediaRecorder.stop();
+    }
+    state.mediaRecorder = null;
+
+    if (state.deepgramSocket) {
+        state.deepgramSocket.close();
+        state.deepgramSocket = null;
+    }
+
+    if (state.stream) {
+        state.stream.getTracks().forEach(track => track.stop());
+        state.stream = null;
+    }
 }
 
 // --- Visualizer Loop ---
@@ -552,6 +569,10 @@ function startVisualizerLoop() {
     state.analysisInterval = requestAnimationFrame(checkVolume);
 }
 
+// Init Deepgram Key UI
+if (inputs.deepgramKey) inputs.deepgramKey.value = state.deepgramKey;
+
+// --- Tab Switching (Login/Register) ---
 // --- Main Session Logic ---
 async function startSession() {
     if (!state.currentUser) {
@@ -560,8 +581,19 @@ async function startSession() {
         return;
     }
 
-    const topic = inputs.topic.value.trim();
-    if (!topic) {
+    // Save Deepgram Key
+    if (inputs.deepgramKey) {
+        state.deepgramKey = inputs.deepgramKey.value.trim();
+        localStorage.setItem('deepgram_api_key', state.deepgramKey);
+    }
+
+    if (!state.deepgramKey) {
+        showToast("Please enter a Deepgram API Key");
+        return;
+    }
+
+    state.topic = inputs.topic.value.trim() || "Untitled Meeting";
+    if (!state.topic) {
         showToast("Please enter a meeting topic.");
         return;
     }
@@ -586,11 +618,7 @@ async function startSession() {
     state.activeRecMode = 'SPEECH';
     state.lastFinishedMode = null;
 
-    try {
-        if (state.recognition) try { state.recognition.start(); } catch (e) { }
-        if (state.audioContext.state === 'suspended') state.audioContext.resume();
-        updateMicUI();
-    } catch (e) { console.error(e); }
+    if (state.audioContext?.state === 'suspended') state.audioContext.resume();
 }
 
 // --- AI Integration ---
@@ -688,10 +716,14 @@ function toggleMic() {
         state.isRecording = true;
         state.micMode = 'SPEECH';
         state.activeRecMode = 'SPEECH';
-        if (state.recognition) try { state.recognition.start(); } catch (e) { }
+
+        initDeepgram().then(() => {
+            startStreaming();
+        });
+
         if (state.audioContext?.state === 'suspended') state.audioContext.resume();
         updateMicUI();
-        showToast("Mic Started - Click again to Answer Now");
+        showToast("Deepgram Started - Click again to Answer Now");
         return;
     }
 

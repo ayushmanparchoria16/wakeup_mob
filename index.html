@@ -105,7 +105,28 @@
                         <input type="text" id="topic-input" placeholder="e.g. Q3 Roadmap Review">
                     </div>
 
-                    <div class="controls-start" style="justify-content: center;">
+                    <!-- Deepgram Config -->
+                    <div class="input-group"
+                        style="text-align: left; margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
+                        <label style="color: var(--accent); display: flex; align-items: center; gap: 5px;">
+                            <span class="material-icons-round" style="font-size: 18px;">vpn_key</span> Deepgram API Key
+                        </label>
+                        <input type="password" id="deepgram-key-input" placeholder="Enter your Deepgram API Key">
+                        <div class="setup-steps"
+                            style="margin-top: 10px; font-size: 0.75rem; color: var(--text-muted); line-height: 1.4;">
+                            <p style="margin-bottom: 5px; font-weight: 600; color: var(--text-main);">How to get your
+                                key:</p>
+                            <ol style="padding-left: 15px;">
+                                <li>Go to <a href="https://console.deepgram.com/" target="_blank"
+                                        style="color: var(--accent);">Deepgram Console</a></li>
+                                <li>Sign up and create a new project</li>
+                                <li>Click "API Keys" → "Create New API Key"</li>
+                                <li>Copy and paste the key above</li>
+                            </ol>
+                        </div>
+                    </div>
+
+                    <div class="controls-start" style="justify-content: center; margin-top: 20px;">
                         <button id="start-btn" class="primary-btn">
                             <span class="icon">▶</span> Start Session
                         </button>
