@@ -41,7 +41,8 @@ const state = {
     micMode: 'SPEECH',
     activeRecMode: 'SPEECH',
     lastFinishedMode: null,
-    forceNewBubble: false
+    forceNewBubble: false,
+    usageRefreshInterval: null
 };
 
 // --- DOM Elements ---
@@ -192,6 +193,11 @@ function init() {
         });
     }
 
+    // Start usage refreshing if we're in setup screen
+    if (screens.setup.classList.contains('active')) {
+        startUsageRefresh();
+    }
+
     // Feedback Listeners
     setupFeedbackListeners();
 
@@ -282,6 +288,7 @@ async function handleLogin() {
             localStorage.setItem('wakeup_user', JSON.stringify(data.user));
             displays.userName.textContent = data.user.displayName;
             switchScreen('setup');
+            startUsageRefresh();
             showToast("Login successful!");
         } else {
             showToast(data.message || "Login failed");
@@ -405,6 +412,7 @@ async function handleLogout() {
     localStorage.removeItem('wakeup_user');
     inputs.topic.value = '';
     switchScreen('auth');
+    stopUsageRefresh();
     showToast("Logged out successfully");
 }
 
@@ -732,6 +740,7 @@ async function handleKeyValidation() {
         buttons.start.title = "Start Meeting";
         displays.keyStatus.classList.remove('hidden');
         showToast("✅ Deepgram Key Validated!", 2000);
+        startUsageRefresh(); // Refresh usage immediately on validation
     } catch (err) {
         console.error("Deepgram Validation Error:", err);
         showToast("❌ Invalid Key or Connection Issue", 3000);
@@ -1170,4 +1179,133 @@ function setupFeedbackListeners() {
     }
 }
 
+// --- Resource Monitoring ---
+
+async function startUsageRefresh() {
+    if (state.usageRefreshInterval) stopUsageRefresh();
+
+    // Initial fetch
+    updateResourceStatus();
+
+    // Set interval for every 5 minutes
+    state.usageRefreshInterval = setInterval(updateResourceStatus, 5 * 60 * 1000);
+}
+
+function stopUsageRefresh() {
+    if (state.usageRefreshInterval) {
+        clearInterval(state.usageRefreshInterval);
+        state.usageRefreshInterval = null;
+    }
+}
+
+async function updateResourceStatus() {
+    const card = document.getElementById('resource-status-card');
+    const dgDisplay = document.getElementById('dg-usage');
+    const puterDisplay = document.getElementById('puter-usage');
+    const refreshTime = document.getElementById('usage-refresh-time');
+
+    if (!card) return;
+
+    // Always show card if on setup screen
+    card.classList.remove('hidden');
+
+    // Update Refresh Time
+    const now = new Date();
+    refreshTime.textContent = `Updated: ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+    // 1. Fetch Deepgram Usage
+    if (state.deepgramKey) {
+        fetchDeepgramUsage().then(usage => {
+            if (usage) {
+                dgDisplay.textContent = usage.display;
+                dgDisplay.style.color = usage.isLow ? 'var(--danger)' : '#4ade80';
+
+                if (usage.projectName) {
+                    const infoDiv = document.getElementById('dg-project-info');
+                    const nameSpan = document.getElementById('dg-project-name');
+                    if (infoDiv && nameSpan) {
+                        infoDiv.style.display = 'block';
+                        nameSpan.textContent = usage.projectName;
+                    }
+                }
+            } else {
+                dgDisplay.textContent = "Error";
+                dgDisplay.style.color = 'var(--danger)';
+            }
+        });
+    } else {
+        dgDisplay.textContent = "Key Required";
+        dgDisplay.style.color = 'var(--text-muted)';
+    }
+
+    // 2. Fetch Puter Usage
+    fetchPuterUsage().then(usage => {
+        if (usage) {
+            puterDisplay.textContent = usage.display;
+        } else {
+            puterDisplay.textContent = "Sign-in required";
+            puterDisplay.style.color = 'var(--text-muted)';
+        }
+    });
+}
+
+async function fetchDeepgramUsage() {
+    try {
+        const headers = { 'Authorization': `Token ${state.deepgramKey}` };
+
+        // Step 1: Get Project ID
+        const projectsRes = await fetch('https://api.deepgram.com/v1/projects', { headers });
+        if (!projectsRes.ok) throw new Error("Failed to fetch projects");
+        const projectsData = await projectsRes.json();
+
+        if (!projectsData.projects || projectsData.projects.length === 0) return null;
+
+        const project = projectsData.projects[0];
+        const projectId = project.project_id;
+        const projectName = project.name;
+
+        // Step 2: Get Usage (Fields vary by account type, trying to get balance or usage summary)
+        const usageRes = await fetch(`https://api.deepgram.com/v1/projects/${projectId}/usage/fields`, { headers });
+        // Note: '/usage' requires start/end dates, 'fields' is a quick way to check if key works.
+        // For simple balance/hours, Deepgram doesn't have a single "remaining" endpoint for all plans.
+        // We'll show the project name and "Active" status as a baseline.
+
+        if (usageRes.ok) {
+            return {
+                display: "Active",
+                isLow: false,
+                projectName: projectName
+            };
+        }
+        return null;
+    } catch (err) {
+        console.error("Deepgram Usage Fetch Error:", err);
+        return null;
+    }
+}
+
+async function fetchPuterUsage() {
+    try {
+        if (typeof puter === 'undefined') return null;
+        if (!puter.auth.isSignedIn()) return null;
+
+        const usage = await puter.auth.getMonthlyUsage();
+        // Usage is in microcents (1/1,000,000 of a cent)
+        // Convert to something readable. 100 microcents = 0.0001 cent.
+        // Usually Puter users want to see how much of their free quota is used.
+
+        if (usage) {
+            // Simplified display: just show it's connected and working
+            return {
+                display: usage.total_cost > 0 ? `$${(usage.total_cost / 100000000).toFixed(4)}` : "$0.00"
+            };
+        }
+        return null;
+    } catch (err) {
+        console.warn("Puter Usage Fetch Error:", err);
+        return null;
+    }
+}
+
 window.addEventListener('load', init);
+
