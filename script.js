@@ -1201,7 +1201,13 @@ function stopUsageRefresh() {
 async function updateResourceStatus() {
     const card = document.getElementById('resource-status-card');
     const dgDisplay = document.getElementById('dg-usage');
-    const puterDisplay = document.getElementById('puter-usage');
+    const dgIndicator = document.getElementById('dg-indicator');
+    const dgProjectName = document.getElementById('dg-project-name');
+
+    const puterBar = document.getElementById('puter-usage-bar');
+    const puterUsageText = document.getElementById('puter-usage-text');
+    const puterQuotaText = document.getElementById('puter-quota-text');
+
     const refreshTime = document.getElementById('usage-refresh-time');
 
     if (!card) return;
@@ -1218,33 +1224,33 @@ async function updateResourceStatus() {
         fetchDeepgramUsage().then(usage => {
             if (usage) {
                 dgDisplay.textContent = usage.display;
-                dgDisplay.style.color = usage.isLow ? 'var(--danger)' : '#4ade80';
-
-                if (usage.projectName) {
-                    const infoDiv = document.getElementById('dg-project-info');
-                    const nameSpan = document.getElementById('dg-project-name');
-                    if (infoDiv && nameSpan) {
-                        infoDiv.style.display = 'block';
-                        nameSpan.textContent = usage.projectName;
-                    }
-                }
+                if (dgIndicator) dgIndicator.style.background = usage.isLow ? 'var(--danger)' : '#4ade80';
+                if (dgProjectName && usage.projectName) dgProjectName.textContent = usage.projectName;
             } else {
                 dgDisplay.textContent = "Error";
-                dgDisplay.style.color = 'var(--danger)';
+                if (dgIndicator) dgIndicator.style.background = 'var(--danger)';
             }
         });
     } else {
         dgDisplay.textContent = "Key Required";
-        dgDisplay.style.color = 'var(--text-muted)';
+        if (dgIndicator) dgIndicator.style.background = 'var(--text-muted)';
     }
 
     // 2. Fetch Puter Usage
     fetchPuterUsage().then(usage => {
-        if (usage) {
-            puterDisplay.textContent = usage.display;
+        if (usage && usage.percentage !== undefined) {
+            if (puterBar) puterBar.style.width = `${usage.percentage}%`;
+            if (puterUsageText) puterUsageText.textContent = `${usage.usedDisplay} Used`;
+            if (puterQuotaText) puterQuotaText.textContent = `${Math.round(usage.percentage)}% of ${usage.quotaDisplay}`;
+
+            // Color coding the bar
+            if (usage.percentage > 90) puterBar.style.background = 'var(--danger)';
+            else if (usage.percentage > 70) puterBar.style.background = '#f59e0b';
+            else puterBar.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)';
         } else {
-            puterDisplay.textContent = "Sign-in required";
-            puterDisplay.style.color = 'var(--text-muted)';
+            if (puterUsageText) puterUsageText.textContent = "Sign-in required";
+            if (puterQuotaText) puterQuotaText.textContent = "Connect Puter.js to see resources";
+            if (puterBar) puterBar.style.width = '0%';
         }
     });
 }
@@ -1264,20 +1270,27 @@ async function fetchDeepgramUsage() {
         const projectId = project.project_id;
         const projectName = project.name;
 
-        // Step 2: Get Usage (Fields vary by account type, trying to get balance or usage summary)
-        const usageRes = await fetch(`https://api.deepgram.com/v1/projects/${projectId}/usage/fields`, { headers });
-        // Note: '/usage' requires start/end dates, 'fields' is a quick way to check if key works.
-        // For simple balance/hours, Deepgram doesn't have a single "remaining" endpoint for all plans.
-        // We'll show the project name and "Active" status as a baseline.
-
-        if (usageRes.ok) {
-            return {
-                display: "Active",
-                isLow: false,
-                projectName: projectName
-            };
+        // Step 2: Get Balance
+        const balanceRes = await fetch(`https://api.deepgram.com/v1/projects/${projectId}/balances`, { headers });
+        if (balanceRes.ok) {
+            const balanceData = await balanceRes.json();
+            if (balanceData.balances && balanceData.balances.length > 0) {
+                const bal = balanceData.balances[0];
+                const amount = bal.amount || 0;
+                const units = bal.units === 'USD' ? '$' : bal.units;
+                return {
+                    display: `${units}${amount.toFixed(2)}`,
+                    isLow: amount < 5,
+                    projectName: projectName
+                };
+            }
         }
-        return null;
+
+        return {
+            display: "Active",
+            isLow: false,
+            projectName: projectName
+        };
     } catch (err) {
         console.error("Deepgram Usage Fetch Error:", err);
         return null;
@@ -1290,14 +1303,17 @@ async function fetchPuterUsage() {
         if (!puter.auth.isSignedIn()) return null;
 
         const usage = await puter.auth.getMonthlyUsage();
-        // Usage is in microcents (1/1,000,000 of a cent)
-        // Convert to something readable. 100 microcents = 0.0001 cent.
-        // Usually Puter users want to see how much of their free quota is used.
+        if (usage && usage.allowanceInfo) {
+            const allowance = usage.allowanceInfo;
+            const quota = allowance.monthUsageAllowance || 50000000; // Default to $0.50 if not found
+            const remaining = allowance.remaining || 0;
+            const used = quota - remaining;
+            const percentage = (used / quota) * 100;
 
-        if (usage) {
-            // Simplified display: just show it's connected and working
             return {
-                display: usage.total_cost > 0 ? `$${(usage.total_cost / 100000000).toFixed(4)}` : "$0.00"
+                usedDisplay: `$${(used / 100000000).toFixed(2)}`,
+                quotaDisplay: `$${(quota / 100000000).toFixed(2)}`,
+                percentage: Math.min(100, Math.max(0, percentage))
             };
         }
         return null;

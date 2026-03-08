@@ -142,37 +142,49 @@
 
                 <!-- Resource Status Dashboard -->
                 <div id="resource-status-card" class="glass-card usage-card hidden"
-                    style="margin-top: 20px; padding: 15px; text-align: left; background: rgba(0,0,0,0.3);">
+                    style="margin-top: 20px; padding: 20px; text-align: left; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05);">
                     <div
-                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
                         <span
-                            style="font-size: 0.85rem; font-weight: 600; color: var(--accent); display: flex; align-items: center; gap: 5px;">
-                            <span class="material-icons-round" style="font-size: 16px;">dashboard</span> Resource Status
+                            style="font-size: 1.1rem; font-weight: 500; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                            Your Resources <span class="material-icons-round"
+                                style="font-size: 18px; color: var(--text-muted); opacity: 0.5;">chevron_right</span>
                         </span>
-                        <span id="usage-refresh-time" style="font-size: 0.7rem; color: var(--text-muted);">Updated:
-                            --</span>
+                        <span id="usage-refresh-time"
+                            style="font-size: 0.75rem; color: var(--text-muted); opacity: 0.7;">Updated: --</span>
                     </div>
 
-                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                        <div class="stat-mini-card"
-                            style="flex: 1; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px;">
-                            <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px;">Deepgram
-                                Balance</div>
-                            <div id="dg-usage" style="font-size: 0.9rem; font-weight: 600; color: #4ade80;">Fetching...
+                    <!-- Puter Usage (Primary) -->
+                    <div style="margin-bottom: 20px;">
+                        <div id="puter-usage-container">
+                            <div
+                                style="height: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 12px; overflow: hidden;">
+                                <div id="puter-usage-bar"
+                                    style="width: 0%; height: 100%; background: linear-gradient(90deg, #f59e0b, #fbbf24); border-radius: 6px; transition: width 0.5s ease;">
+                                </div>
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                <div id="puter-usage-text"
+                                    style="font-size: 1.5rem; font-weight: 600; color: var(--text-main);">$0.00 Used
+                                </div>
+                                <div id="puter-quota-text" style="font-size: 0.9rem; color: var(--text-muted);">0% of
+                                    $0.50</div>
                             </div>
                         </div>
-                        <div class="stat-mini-card"
-                            style="flex: 1; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px;">
-                            <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px;">Puter AI
-                                Monthly</div>
-                            <div id="puter-usage" style="font-size: 0.9rem; font-weight: 600; color: var(--accent);">
-                                Fetching...</div>
-                        </div>
                     </div>
 
-                    <div id="dg-project-info"
-                        style="font-size: 0.75rem; color: var(--text-muted); border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px; display: none;">
-                        Project: <span id="dg-project-name" style="color: var(--text-main);">--</span>
+                    <!-- Deepgram Status (Secondary) -->
+                    <div
+                        style="display: flex; align-items: center; justify-content: space-between; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.05);">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div id="dg-indicator"
+                                style="width: 8px; height: 8px; border-radius: 50%; background: #4ade80;"></div>
+                            <span style="font-size: 0.85rem; color: var(--text-muted);">Deepgram:</span>
+                            <span id="dg-usage"
+                                style="font-size: 0.85rem; font-weight: 500; color: var(--text-main);">Fetching...</span>
+                        </div>
+                        <span id="dg-project-name"
+                            style="font-size: 0.75rem; color: var(--text-muted); opacity: 0.6; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">--</span>
                     </div>
                 </div>
 
