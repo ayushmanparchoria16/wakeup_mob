@@ -177,23 +177,31 @@ body {
 }
 
 .btn-loading::after {
-    content: '';
+    content: '...';
     position: absolute;
-    width: 20px;
-    height: 20px;
-    border: 2px solid transparent;
-    border-top-color: #fff;
-    border-right-color: #fff;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
+    color: #fff;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    line-height: 1;
+    animation: dots 1.4s infinite ease-in-out both;
 }
 
-@keyframes spin {
-    to {
-        transform: translate(-50%, -50%) rotate(360deg);
+@keyframes dots {
+
+    0%,
+    80%,
+    100% {
+        opacity: 0.2;
+        transform: translate(-50%, -50%) scale(0.9);
+    }
+
+    40% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.1);
     }
 }
 
@@ -944,31 +952,4 @@ input:focus {
     border-color: var(--primary);
     background: rgba(0, 0, 0, 0.6);
     box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
-}
-
-/* Loading States */
-.btn-loading {
-    position: relative;
-    pointer-events: none;
-    color: transparent !important;
-}
-
-.btn-loading::after {
-    content: "";
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    top: 50%;
-    left: 50%;
-    margin: -10px 0 0 -10px;
-    border: 3px solid rgba(255, 255, 255, 0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
 }

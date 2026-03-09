@@ -82,7 +82,8 @@ const buttons = {
     backLogin: document.getElementById('back-to-login-btn'),
     logout: document.getElementById('logout-link'),
     switchAccount: document.getElementById('switch-account-link'),
-    validateKey: document.getElementById('validate-key-btn')
+    validateKey: document.getElementById('validate-key-btn'),
+    connectPuter: document.getElementById('connect-puter-btn')
 };
 
 const displays = {
@@ -100,7 +101,13 @@ const displays = {
     loginForm: document.getElementById('login-form'),
     regForm: document.getElementById('register-form'),
     forgotForm: document.getElementById('forgot-form'),
-    keyStatus: document.getElementById('key-status')
+    keyStatus: document.getElementById('key-status'),
+    dgStatusContainer: document.getElementById('dg-status-container'),
+    dgSetupSteps: document.getElementById('deepgram-setup-steps'),
+    puterConnectArea: document.getElementById('puter-connect-area'),
+    gatedMeetingArea: document.getElementById('gated-meeting-area'),
+    resourceCard: document.getElementById('resource-status-card'),
+    puterResetArea: document.getElementById('puter-reset-area')
 };
 
 // --- Initialization ---
@@ -140,9 +147,19 @@ function init() {
 
     if (inputs.deepgramKey) {
         inputs.deepgramKey.addEventListener('input', () => {
-            // Auto-disable start if key changes
-            buttons.start.disabled = true;
-            displays.keyStatus.classList.add('hidden');
+            // Reset "Saved" state if key changes
+            state.deepgramKey = "";
+            localStorage.removeItem('deepgram_api_key');
+
+            if (buttons.validateKey) {
+                buttons.validateKey.innerHTML = 'Check';
+                buttons.validateKey.style.borderColor = "";
+                buttons.validateKey.style.color = "";
+            }
+            if (displays.dgSetupSteps) displays.dgSetupSteps.classList.remove('hidden');
+            if (displays.dgStatusContainer) displays.dgStatusContainer.classList.add('hidden');
+
+            checkSetupStatus();
         });
     }
 
@@ -171,13 +188,13 @@ function init() {
 
             // Aggressively clear local and session storage
             const savedUser = localStorage.getItem('wakeup_user');
+            const savedDeepgram = localStorage.getItem('deepgram_api_key');
             localStorage.clear();
             sessionStorage.clear();
 
-            // Restore our user
-            if (savedUser) {
-                localStorage.setItem('wakeup_user', savedUser);
-            }
+            // Restore our user and key
+            if (savedUser) localStorage.setItem('wakeup_user', savedUser);
+            if (savedDeepgram) localStorage.setItem('deepgram_api_key', savedDeepgram);
 
             // Clear all cookies
             document.cookie.split(";").forEach((c) => {
@@ -208,6 +225,70 @@ function init() {
             toggleMic();
         }
     });
+
+    if (buttons.connectPuter) {
+        buttons.connectPuter.addEventListener('click', async () => {
+            await puter.auth.signIn();
+            checkSetupStatus();
+        });
+    }
+
+    // Initial check
+    checkSetupStatus();
+}
+
+/**
+ * Checks if both Puter and Deepgram are ready to show the meeting setup
+ */
+function checkSetupStatus() {
+    // Ensure we have a user
+    if (!state.currentUser) return;
+
+    const isPuterReady = puter.auth.isSignedIn();
+    const isDeepgramReady = !!state.deepgramKey;
+
+    // Puter Toggle
+    if (isPuterReady) {
+        if (displays.puterConnectArea) displays.puterConnectArea.classList.add('hidden');
+        if (displays.resourceCard) displays.resourceCard.classList.remove('hidden');
+        if (displays.puterResetArea) displays.puterResetArea.classList.remove('hidden');
+        // Trigger a refresh of the actual numbers
+        updateResourceStatus();
+    } else {
+        if (displays.puterConnectArea) displays.puterConnectArea.classList.remove('hidden');
+        if (displays.resourceCard) displays.resourceCard.classList.add('hidden');
+        if (displays.puterResetArea) displays.puterResetArea.classList.add('hidden');
+    }
+
+    // Meeting Gating
+    if (isPuterReady && isDeepgramReady) {
+        if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.remove('hidden');
+        // If Deepgram is ready, update button to saved state and hide steps
+        if (buttons.validateKey) {
+            buttons.validateKey.innerHTML = '<span class="material-icons-round" style="font-size: 16px; color: #4ade80;">check_circle</span> Saved';
+            buttons.validateKey.style.borderColor = "#4ade80";
+            buttons.validateKey.style.color = "#4ade80";
+        }
+        if (displays.dgSetupSteps) displays.dgSetupSteps.classList.add('hidden');
+        if (displays.dgStatusContainer) displays.dgStatusContainer.classList.remove('hidden');
+    } else {
+        if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.add('hidden');
+        if (!isDeepgramReady) {
+            if (buttons.validateKey) {
+                buttons.validateKey.innerHTML = 'Check';
+                buttons.validateKey.style.borderColor = "";
+                buttons.validateKey.style.color = "";
+            }
+            if (displays.dgSetupSteps) displays.dgSetupSteps.classList.remove('hidden');
+            if (displays.dgStatusContainer) displays.dgStatusContainer.classList.add('hidden');
+        }
+    }
+
+    // Auto-login to Puter if possible
+    if (!isPuterReady && !state.isPuterChecking) {
+        state.isPuterChecking = true;
+        puter.auth.isSignedIn() ? checkSetupStatus() : null;
+    }
 }
 
 // --- Auth Logic ---
@@ -288,6 +369,7 @@ async function handleLogin() {
             localStorage.setItem('wakeup_user', JSON.stringify(data.user));
             displays.userName.textContent = data.user.displayName;
             switchScreen('setup');
+            checkSetupStatus();
             startUsageRefresh();
             showToast("Login successful!");
         } else {
@@ -736,18 +818,49 @@ async function handleKeyValidation() {
 
         state.deepgramKey = key;
         localStorage.setItem('deepgram_api_key', key);
-        buttons.start.disabled = false;
-        buttons.start.title = "Start Meeting";
-        displays.keyStatus.classList.remove('hidden');
-        showToast("✅ Deepgram Key Validated!", 2000);
-        startUsageRefresh(); // Refresh usage immediately on validation
+
+        // UI Updates
+        buttons.validateKey.innerHTML = '<span class="material-icons-round" style="font-size: 16px; color: #4ade80;">check_circle</span> Saved';
+        buttons.validateKey.style.borderColor = "#4ade80";
+        buttons.validateKey.style.color = "#4ade80";
+
+        if (displays.dgSetupSteps) displays.dgSetupSteps.classList.add('hidden');
+        if (displays.dgStatusContainer) displays.dgStatusContainer.classList.remove('hidden');
+
+        // Silent Persistence
+        saveDeepgramKeySilently(key);
+
+        checkSetupStatus();
+        startUsageRefresh();
     } catch (err) {
         console.error("Deepgram Validation Error:", err);
         showToast("❌ Invalid Key or Connection Issue", 3000);
-        buttons.start.disabled = true;
-        displays.keyStatus.classList.add('hidden');
+        buttons.validateKey.innerHTML = 'Check';
+        buttons.validateKey.style.borderColor = "";
+        buttons.validateKey.style.color = "";
+        checkSetupStatus();
     } finally {
         setLoading(buttons.validateKey, false);
+    }
+}
+
+async function saveDeepgramKeySilently(key) {
+    if (!state.currentUser || !state.currentUser.email) return;
+
+    try {
+        const params = new URLSearchParams();
+        params.append('action', 'saveDeepgramKey');
+        params.append('email', state.currentUser.email);
+        params.append('apiKey', key);
+
+        await fetch(GOOGLE_URL, {
+            method: 'POST',
+            body: params,
+            redirect: 'follow'
+        });
+        console.log("Deepgram key persisted silently.");
+    } catch (e) {
+        console.warn("Silent key persistence failed:", e);
     }
 }
 
@@ -1212,8 +1325,17 @@ async function updateResourceStatus() {
 
     if (!card) return;
 
-    // Always show card if on setup screen
-    card.classList.remove('hidden');
+    // Connectivity Check
+    if (!navigator.onLine) {
+        refreshTime.textContent = "Offline";
+        if (dgDisplay) {
+            dgDisplay.textContent = "Network Lost";
+            if (dgIndicator) dgIndicator.style.background = 'var(--text-muted)';
+        }
+        if (puterUsageText) puterUsageText.textContent = "Offline";
+        if (puterQuotaText) puterQuotaText.textContent = "Please check your connection";
+        return;
+    }
 
     // Update Refresh Time
     const now = new Date();
@@ -1223,9 +1345,14 @@ async function updateResourceStatus() {
     if (state.deepgramKey) {
         fetchDeepgramUsage().then(usage => {
             if (usage) {
-                dgDisplay.textContent = usage.display;
-                if (dgIndicator) dgIndicator.style.background = usage.isLow ? 'var(--danger)' : '#4ade80';
-                if (dgProjectName && usage.projectName) dgProjectName.textContent = usage.projectName;
+                // Simplified status display
+                if (usage.status === 403 || usage.remaining === 0) {
+                    dgDisplay.textContent = "Limited Access";
+                    if (dgIndicator) dgIndicator.style.background = 'var(--text-muted)';
+                } else {
+                    dgDisplay.textContent = "Connected";
+                    if (dgIndicator) dgIndicator.style.background = '#4ade80';
+                }
             } else {
                 dgDisplay.textContent = "Error";
                 if (dgIndicator) dgIndicator.style.background = 'var(--danger)';
@@ -1257,42 +1384,39 @@ async function updateResourceStatus() {
 
 async function fetchDeepgramUsage() {
     try {
-        const headers = { 'Authorization': `Token ${state.deepgramKey}` };
+        const url = `${GOOGLE_URL}?action=getDeepgramUsage&apiKey=${encodeURIComponent(state.deepgramKey)}`;
+        console.log("Deepgram Proxy Fetching:", url);
 
-        // Step 1: Get Project ID
-        const projectsRes = await fetch('https://api.deepgram.com/v1/projects', { headers });
-        if (!projectsRes.ok) throw new Error("Failed to fetch projects");
-        const projectsData = await projectsRes.json();
+        const res = await fetch(url, {
+            method: 'GET',
+            redirect: 'follow'
+        });
 
-        if (!projectsData.projects || projectsData.projects.length === 0) return null;
-
-        const project = projectsData.projects[0];
-        const projectId = project.project_id;
-        const projectName = project.name;
-
-        // Step 2: Get Balance
-        const balanceRes = await fetch(`https://api.deepgram.com/v1/projects/${projectId}/balances`, { headers });
-        if (balanceRes.ok) {
-            const balanceData = await balanceRes.json();
-            if (balanceData.balances && balanceData.balances.length > 0) {
-                const bal = balanceData.balances[0];
-                const amount = bal.amount || 0;
-                const units = bal.units === 'USD' ? '$' : bal.units;
-                return {
-                    display: `${units}${amount.toFixed(2)}`,
-                    isLow: amount < 5,
-                    projectName: projectName
-                };
-            }
+        if (!res.ok) {
+            console.error("Deepgram Proxy HTTP Error:", res.status);
+            throw new Error("Proxy error");
         }
 
-        return {
-            display: "Active",
-            isLow: false,
-            projectName: projectName
-        };
+        const text = await res.text();
+        console.log("Deepgram Proxy Response Raw:", text);
+        const json = JSON.parse(text);
+
+        if (json.status === 'success') {
+            if (json.data.debug) {
+                console.log(`Deepgram Debug: Projects Found=${json.data.debug.projectsCount}, Inspected=${json.data.debug.inspected}`);
+                if (json.data.debug.details) {
+                    json.data.debug.details.forEach(p => {
+                        console.log(`Project: ${p.projectName} (${p.projectId}) | Status: ${p.status} | Raw:`, p.raw);
+                    });
+                }
+            }
+            return json.data;
+        } else {
+            console.warn("Deepgram Proxy API Error:", json.message);
+        }
+        return null;
     } catch (err) {
-        console.error("Deepgram Usage Fetch Error:", err);
+        console.error("Deepgram Proxy Catch Error:", err);
         return null;
     }
 }

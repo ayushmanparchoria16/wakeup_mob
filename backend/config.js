@@ -19,22 +19,111 @@ function doGet(e) {
     return handleRequest(e.parameter);
 }
 
+/**
+ * RUN THIS ONCE to authorize the script!
+ * Click "Run" on this function to trigger the "Review Permissions" dialog.
+ */
+function authorizeScript() {
+    // Just fetching a public URL to trigger the "external_request" permission popup
+    UrlFetchApp.fetch("https://www.google.com", { muteHttpExceptions: true });
+    Logger.log("Authorization successful!");
+}
+
 function handleRequest(params) {
     const action = params.action;
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName("Users");
-
-    if (!sheet) {
-        return createJsonResponse({
-            status: 'error',
-            message: 'Database error: "Users" sheet tab not found.'
-        });
-    }
-
-    const data = sheet.getDataRange().getValues();
     let response = { status: 'error', message: 'Unknown action requested.' };
 
     try {
+        // --- PROXY ACTIONS (No Spreadsheet needed) ---
+        if (action === 'getDeepgramUsage') {
+            const apiKey = params.apiKey;
+            if (!apiKey) return createJsonResponse({ status: 'error', message: 'API Key is required.' });
+
+            const headers = { 'Authorization': 'Token ' + apiKey };
+
+            // 1. Get Projects
+            const projectsRes = UrlFetchApp.fetch('https://api.deepgram.com/v1/projects', {
+                headers: headers,
+                muteHttpExceptions: true
+            });
+
+            if (projectsRes.getResponseCode() !== 200) {
+                return createJsonResponse({ status: 'error', message: 'Deepgram Auth Failed' });
+            }
+
+            const projectsData = JSON.parse(projectsRes.getContentText());
+            if (!projectsData.projects || projectsData.projects.length === 0) {
+                return createJsonResponse({ status: 'error', message: 'No projects found' });
+            }
+
+            let totalRemaining = 0;
+            let totalEverAdded = 0;
+            let units = '$';
+            let mainProjectName = '';
+            let projectsInspected = 0;
+            let debugInfo = [];
+
+            // 2. Iterate through all projects to find balances
+            for (let p = 0; p < projectsData.projects.length; p++) {
+                const project = projectsData.projects[p];
+                const projectId = project.project_id;
+                if (p === 0) mainProjectName = project.name;
+                projectsInspected++;
+
+                const balanceRes = UrlFetchApp.fetch('https://api.deepgram.com/v1/projects/' + projectId + '/balances', {
+                    headers: headers,
+                    muteHttpExceptions: true
+                });
+
+                let rawBalance = 'None';
+                if (balanceRes.getResponseCode() === 200) {
+                    rawBalance = balanceRes.getContentText();
+                    const balanceData = JSON.parse(rawBalance);
+                    if (balanceData.balances) {
+                        balanceData.balances.forEach(bal => {
+                            // Use parseFloat to ensure numeric addition
+                            const amt = parseFloat(bal.amount) || 0;
+                            const total = parseFloat(bal.total_amount || bal.amount) || 0;
+
+                            totalRemaining += amt;
+                            totalEverAdded += total;
+
+                            if (bal.units === 'USD') units = '$';
+                            else if (bal.units) units = bal.units;
+                        });
+                    }
+                }
+
+                debugInfo.push({
+                    projectId: projectId,
+                    projectName: project.name,
+                    status: balanceRes.getResponseCode(),
+                    raw: rawBalance
+                });
+            }
+
+            return createJsonResponse({
+                status: 'success',
+                data: {
+                    remaining: totalRemaining,
+                    status: projectsData.projects.length > 0 ? 200 : 404,
+                    projectName: mainProjectName
+                }
+            });
+        }
+
+        // --- SPREADSHEET ACTIONS ---
+        const ss = SpreadsheetApp.getActiveSpreadsheet();
+        const sheet = ss.getSheetByName("Users");
+
+        if (!sheet) {
+            return createJsonResponse({
+                status: 'error',
+                message: 'Database error: "Users" sheet tab not found.'
+            });
+        }
+
+        const data = sheet.getDataRange().getValues();
         // --- ACTION: REGISTER ---
         if (action === 'register') {
             const email = params.email ? params.email.trim().toLowerCase() : "";
@@ -254,6 +343,36 @@ function handleRequest(params) {
             response.message = 'Feedback saved.';
         }
 
+        // --- ACTION: SAVE DEEPGRAM KEY (Silent) ---
+        else if (action === 'saveDeepgramKey') {
+            const email = params.email ? params.email.trim().toLowerCase() : "";
+            const key = params.apiKey;
+
+            if (!email || !key) {
+                return createJsonResponse({ status: 'error', message: 'Email and Key are required.' });
+            }
+
+            // Ensure column exists (Column 8: DeepgramKey)
+            const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+            let keyColIdx = headers.indexOf("DeepgramKey") + 1;
+
+            if (keyColIdx === 0) {
+                keyColIdx = sheet.getLastColumn() + 1;
+                sheet.getRange(1, keyColIdx).setValue("DeepgramKey").setFontWeight("bold");
+            }
+
+            let found = false;
+            for (let i = 1; i < data.length; i++) {
+                if (data[i][0].toString().toLowerCase() === email) {
+                    sheet.getRange(i + 1, keyColIdx).setValue(key);
+                    response.status = 'success';
+                    response.message = 'Key persisted.';
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) response.message = 'User not found.';
+        }
     } catch (err) {
         response.status = 'error';
         response.message = 'Script Error: ' + err.toString();
