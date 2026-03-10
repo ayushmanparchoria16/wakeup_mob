@@ -753,7 +753,7 @@ async function startSession() {
         return;
     }
 
-    const topic = inputs.topic.value.trim() || "Untitled Meeting";
+    const topic = inputs.topic.value.trim() || "Untitled Interview";
     state.topic = topic;
 
     if (!puter.auth.isSignedIn()) await puter.auth.signIn();
