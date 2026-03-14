@@ -1,4 +1,4 @@
-﻿const GOOGLE_URL = 'https://script.google.com/macros/s/AKfycby43nl9_mMl4L874fYORDY9Qx-2PoxjW9TGQ9OUYpRjmLR27Np_Gdc84WDYq1_8bEyv/exec';
+const GOOGLE_URL = 'https://script.google.com/macros/s/AKfycby43nl9_mMl4L874fYORDY9Qx-2PoxjW9TGQ9OUYpRjmLR27Np_Gdc84WDYq1_8bEyv/exec';
 
 /**
  * GOOGLE APPS SCRIPT BACKEND - WAKEUP AI
@@ -124,6 +124,14 @@ function handleRequest(params) {
         }
 
         const data = sheet.getDataRange().getValues();
+        // Helper to find column index by name
+        const getColIdx = (colName) => {
+            const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+            return headers.indexOf(colName);
+        };
+
+        const subStatusCol = getColIdx("SubscriptionStatus");
+
         // --- ACTION: REGISTER ---
         if (action === 'register') {
             const email = params.email ? params.email.trim().toLowerCase() : "";
@@ -145,7 +153,7 @@ function handleRequest(params) {
             if (exists) {
                 response.message = 'An account with this email already exists.';
             } else {
-                sheet.appendRow([
+                let newRow = [
                     email,
                     password,
                     displayName,
@@ -153,7 +161,26 @@ function handleRequest(params) {
                     new Date().toISOString(),
                     'offline',
                     new Date().toISOString()
-                ]);
+                ];
+                
+                // If the column doesn't exist yet, we will just add the row normally.
+                // The Google Sheets API schema might get misaligned if we forcefully pad it,
+                // but setting a default 'Free' status is helpful if the column exists.
+                if (subStatusCol > -1) {
+                    // Pad array up to the col index if needed
+                    while(newRow.length <= subStatusCol) newRow.push("");
+                    newRow[subStatusCol] = "Free";
+                }
+
+                sheet.appendRow(newRow);
+                
+                // If column doesn't exist, create it for future use
+                if (subStatusCol === -1) {
+                    const newColIdx = sheet.getLastColumn() + 1;
+                    sheet.getRange(1, newColIdx).setValue("SubscriptionStatus").setFontWeight("bold");
+                    sheet.getRange(sheet.getLastRow(), newColIdx).setValue("Free");
+                }
+
                 response.status = 'success';
                 response.message = 'Registration successful.';
             }
@@ -173,12 +200,18 @@ function handleRequest(params) {
                     sheet.getRange(i + 1, 5).setValue(new Date().toISOString());
                     sheet.getRange(i + 1, 6).setValue('online');
 
+                    let subStatus = "Free";
+                    if (subStatusCol > -1) {
+                        subStatus = data[i][subStatusCol] || "Free";
+                    }
+
                     response.status = 'success';
                     response.user = {
                         email: data[i][0],
                         displayName: data[i][2],
                         totalMinutesUsed: data[i][3],
-                        lastLogin: new Date().toISOString()
+                        lastLogin: new Date().toISOString(),
+                        SubscriptionStatus: subStatus
                     };
                     found = true;
                     break;
@@ -192,13 +225,19 @@ function handleRequest(params) {
             const email = params.email ? params.email.trim().toLowerCase() : "";
             for (let i = 1; i < data.length; i++) {
                 if (data[i][0].toString().toLowerCase() === email) {
+                    let subStatus = "Free";
+                    if (subStatusCol > -1) {
+                        subStatus = data[i][subStatusCol] || "Free";
+                    }
+
                     response.status = 'success';
                     response.user = {
                         email: data[i][0],
                         displayName: data[i][2],
                         totalMinutesUsed: data[i][3],
                         lastLogin: data[i][4],
-                        status: data[i][5]
+                        status: data[i][5],
+                        SubscriptionStatus: subStatus
                     };
                     break;
                 }
@@ -230,6 +269,77 @@ function handleRequest(params) {
                     response.status = 'success';
                     break;
                 }
+            }
+        }
+
+        // --- ACTION: GET DEMO KEY (Least Used) ---
+        else if (action === 'getDemoKey') {
+            const email = params.email ? params.email.trim().toLowerCase() : "";
+            
+            const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+            let keyColIdx = headers.indexOf("DeepgramKey"); // 0-indexed for array
+            let demoCountCol = headers.indexOf("DemoSessionsDone");
+            let demoDateCol = headers.indexOf("LastDemoAt");
+
+            // Ensure our new tracking columns exist
+            if (demoCountCol === -1) {
+                demoCountCol = sheet.getLastColumn();
+                sheet.getRange(1, demoCountCol + 1).setValue("DemoSessionsDone").setFontWeight("bold");
+            }
+            if (demoDateCol === -1) {
+                demoDateCol = sheet.getLastColumn();
+                sheet.getRange(1, demoDateCol + 1).setValue("LastDemoAt").setFontWeight("bold");
+            }
+            
+            if (keyColIdx === -1) {
+                return createJsonResponse({ status: 'error', message: 'No Deepgram keys available in database.' });
+            }
+
+            let leastUsedKey = null;
+            let lowestMinutes = Infinity;
+            let keyProviderRowIdx = -1;
+
+            for (let i = 1; i < data.length; i++) {
+                const key = data[i][keyColIdx];
+                const minutes = parseFloat(data[i][3]) || 0; // Column 4 is TotalMinutesUsed (index 3)
+                
+                if (key && typeof key === 'string' && key.trim().length > 10) {
+                    if (minutes < lowestMinutes) {
+                        lowestMinutes = minutes;
+                        leastUsedKey = key.trim();
+                        keyProviderRowIdx = i + 1; // +1 because array is 0-indexed but sheets are 1-indexed (and row 1 is header)
+                    }
+                }
+            }
+
+            if (leastUsedKey) {
+                const nowStr = new Date().toISOString();
+                
+                // 1. Update the Key Provider's stats
+                if (keyProviderRowIdx > -1) {
+                    const currentProviderCount = parseFloat(sheet.getRange(keyProviderRowIdx, demoCountCol + 1).getValue()) || 0;
+                    sheet.getRange(keyProviderRowIdx, demoCountCol + 1).setValue(currentProviderCount + 1);
+                    sheet.getRange(keyProviderRowIdx, demoDateCol + 1).setValue(nowStr);
+                }
+
+                // 2. Update the Demo Taker's stats
+                if (email) {
+                    for (let i = 1; i < data.length; i++) {
+                        if (data[i][0].toString().toLowerCase() === email) {
+                            const takerRowIdx = i + 1;
+                            const currentTakerCount = parseFloat(sheet.getRange(takerRowIdx, demoCountCol + 1).getValue()) || 0;
+                            sheet.getRange(takerRowIdx, demoCountCol + 1).setValue(currentTakerCount + 1);
+                            sheet.getRange(takerRowIdx, demoDateCol + 1).setValue(nowStr);
+                            break;
+                        }
+                    }
+                }
+
+                response.status = 'success';
+                response.apiKey = leastUsedKey;
+            } else {
+                response.status = 'error';
+                response.message = 'No valid Deepgram keys found in database.';
             }
         }
 

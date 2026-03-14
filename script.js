@@ -83,7 +83,11 @@ const buttons = {
     logout: document.getElementById('logout-link'),
     switchAccount: document.getElementById('switch-account-link'),
     validateKey: document.getElementById('validate-key-btn'),
-    connectPuter: document.getElementById('connect-puter-btn')
+    connectPuter: document.getElementById('connect-puter-btn'),
+    initByokBtn: document.getElementById('init-byok-btn'),
+    startDemoBtn: document.getElementById('start-demo-btn'),
+    showDevCardBtn: document.getElementById('show-dev-card-btn'),
+    changeKeysBtn: document.getElementById('change-keys-btn')
 };
 
 const displays = {
@@ -107,7 +111,10 @@ const displays = {
     puterConnectArea: document.getElementById('puter-connect-area'),
     gatedMeetingArea: document.getElementById('gated-meeting-area'),
     resourceCard: document.getElementById('resource-status-card'),
-    puterResetArea: document.getElementById('puter-reset-area')
+    puterResetArea: document.getElementById('puter-reset-area'),
+    onboardingOptions: document.getElementById('onboarding-options'),
+    devCardOptions: document.getElementById('dev-card-options'),
+    byokSetupArea: document.getElementById('byok-setup-area')
 };
 
 // --- Initialization ---
@@ -143,6 +150,14 @@ function init() {
 
     if (buttons.validateKey) {
         buttons.validateKey.addEventListener('click', handleKeyValidation);
+    }
+
+    if (buttons.initByokBtn) {
+        buttons.initByokBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            buttons.initByokBtn.classList.add('hidden');
+            displays.byokSetupArea.classList.remove('hidden');
+        });
     }
 
     if (inputs.deepgramKey) {
@@ -232,6 +247,35 @@ function init() {
             checkSetupStatus();
         });
     }
+    
+    if (buttons.changeKeysBtn) {
+        buttons.changeKeysBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            displays.gatedMeetingArea.classList.add('hidden');
+            displays.onboardingOptions.classList.remove('hidden');
+            buttons.initByokBtn.classList.add('hidden');
+            displays.byokSetupArea.classList.remove('hidden');
+            if (inputs.deepgramKey) {
+                inputs.deepgramKey.focus();
+            }
+        });
+    }
+
+    if (buttons.startDemoBtn) {
+        buttons.startDemoBtn.addEventListener('click', () => {
+            if (!puter.auth.isSignedIn()) {
+                showToast("Please Connect Puter to use Demo mode.", 3000);
+                // Trigger Puter sign-in
+                puter.auth.signIn().then(() => {
+                    checkSetupStatus();
+                    startSession(true);
+                });
+                return;
+            }
+            showToast("Initializing Demo Mode...", 2000);
+            startSession(true); // Pass flag for demo mode
+        });
+    }
 
     // Initial check
     checkSetupStatus();
@@ -260,26 +304,31 @@ function checkSetupStatus() {
         if (displays.puterResetArea) displays.puterResetArea.classList.add('hidden');
     }
 
+    // Tier Logic
+    const isPremium = state.currentUser?.SubscriptionStatus === 'Active';
+
     // Meeting Gating
-    if (isPuterReady && isDeepgramReady) {
+    if (isPremium || (isPuterReady && isDeepgramReady)) {
+        if (displays.onboardingOptions) displays.onboardingOptions.classList.add('hidden');
         if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.remove('hidden');
-        // If Deepgram is ready, update button to saved state and hide steps
-        if (buttons.validateKey) {
+        
+        // If Deepgram is ready (BYOK path), update button visually
+        if (isDeepgramReady && buttons.validateKey) {
             buttons.validateKey.innerHTML = '<span class="material-icons-round" style="font-size: 16px; color: #4ade80;">check_circle</span> Saved';
             buttons.validateKey.style.borderColor = "#4ade80";
             buttons.validateKey.style.color = "#4ade80";
         }
-        if (displays.dgSetupSteps) displays.dgSetupSteps.classList.add('hidden');
         if (displays.dgStatusContainer) displays.dgStatusContainer.classList.remove('hidden');
     } else {
+        if (displays.onboardingOptions) displays.onboardingOptions.classList.remove('hidden');
         if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.add('hidden');
+        
         if (!isDeepgramReady) {
             if (buttons.validateKey) {
-                buttons.validateKey.innerHTML = 'Check';
+                buttons.validateKey.innerHTML = 'Save';
                 buttons.validateKey.style.borderColor = "";
                 buttons.validateKey.style.color = "";
             }
-            if (displays.dgSetupSteps) displays.dgSetupSteps.classList.remove('hidden');
             if (displays.dgStatusContainer) displays.dgStatusContainer.classList.add('hidden');
         }
     }
@@ -735,22 +784,52 @@ if (inputs.deepgramKey) inputs.deepgramKey.value = state.deepgramKey;
 
 // --- Tab Switching (Login/Register) ---
 // --- Main Session Logic ---
-async function startSession() {
+async function startSession(isDemo = false) {
     if (!state.currentUser) {
         showToast("Please login first.");
         switchScreen('auth');
         return;
     }
 
-    // Save Deepgram Key
-    if (inputs.deepgramKey) {
-        state.deepgramKey = inputs.deepgramKey.value.trim();
-        localStorage.setItem('deepgram_api_key', state.deepgramKey);
-    }
+    state.isDemoMode = isDemo === true;
+    state.demoResponsesCount = 0;
 
-    if (!state.deepgramKey) {
-        showToast("Please enter a Deepgram API Key");
-        return;
+    if (state.isDemoMode) {
+        if (!puter.auth.isSignedIn()) {
+            showToast("Please sign in to Puter to start the Demo.", 4000);
+            return;
+        }
+        showToast("Fetching Demo Access...", 2000);
+        try {
+            const params = new URLSearchParams();
+            params.append('action', 'getDemoKey');
+            params.append('email', state.currentUser.email);
+            const res = await fetch(GOOGLE_URL, { method: 'POST', body: params });
+            const data = await res.json();
+            if (data.status === 'success') {
+                state.deepgramKey = data.apiKey;
+            } else {
+                showToast("Demo unavailable right now. " + (data.message || ""));
+                return;
+            }
+        } catch(e) {
+            showToast("Failed to fetch Demo session details.");
+            console.error(e);
+            return;
+        }
+    } else {
+        const isPremium = state.currentUser?.SubscriptionStatus === 'Active';
+        
+        // Save Deepgram Key
+        if (inputs.deepgramKey) {
+            state.deepgramKey = inputs.deepgramKey.value.trim();
+            localStorage.setItem('deepgram_api_key', state.deepgramKey);
+        }
+
+        if (!state.deepgramKey && !isPremium) {
+            showToast("Please enter a Deepgram API Key or Subscribe");
+            return;
+        }
     }
 
     const topic = inputs.topic.value.trim() || "Untitled Interview";
@@ -867,6 +946,18 @@ async function saveDeepgramKeySilently(key) {
 // --- AI Integration ---
 async function triggerAI(text, type = "SPEECH") {
     if (state.isProcessingAI) return;
+
+    if (state.isDemoMode) {
+        if (state.demoResponsesCount >= 5) {
+            showToast("Demo Limit Reached (5/5). Please Subscribe for unlimited access.", 5000);
+            
+            // Optionally auto-end the session after limit is reached
+            setTimeout(endSession, 3000);
+            return;
+        }
+        state.demoResponsesCount++;
+        showToast(`Demo Response ${state.demoResponsesCount}/5`, 2000);
+    }
 
     const lastMessage = state.chatHistory.length > 0 ? state.chatHistory[state.chatHistory.length - 1] : null;
     if (lastMessage && lastMessage.role === 'assistant') {

@@ -100,79 +100,92 @@
                             style="color:var(--danger); margin-left:10px; text-decoration:none; font-size:0.8rem;">Logout</a>
                     </p>
 
-                    <!-- Deepgram Config Area -->
-                    <div id="dg-config-area"
-                        style="text-align: left; margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
-                        <label
-                            style="color: var(--accent); display: flex; align-items: center; justify-content: space-between; gap: 5px; margin-bottom: 8px;">
-                            <span style="display: flex; align-items: center; gap: 5px; font-size: 0.9rem;">
-                                <span class="material-icons-round" style="font-size: 18px;">vpn_key</span> Deepgram API
-                                Key
-                            </span>
-                        </label>
-                        <div style="display: flex; gap: 8px;">
-                            <input type="password" id="deepgram-key-input" placeholder="Enter your Deepgram API Key"
-                                style="flex: 1;">
-                            <button id="validate-key-btn" class="secondary-btn"
-                                style="padding: 0 15px; font-size: 0.8rem; min-width: 80px;">Check</button>
-                        </div>
-
-                        <!-- Deepgram Status (Silent validation result) -->
-                        <div id="dg-status-container" class="hidden"
-                            style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <div id="dg-indicator"
-                                    style="width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted);">
-                                </div>
-                                <span style="font-size: 0.8rem; color: var(--text-muted);">Deepgram:</span>
-                                <span id="dg-usage"
-                                    style="font-size: 0.8rem; font-weight: 500; color: var(--text-main);">Checking...</span>
-                            </div>
-                            <a href="https://console.deepgram.com/" target="_blank"
-                                style="font-size: 0.75rem; color: var(--accent); text-decoration: none; display: flex; align-items: center; gap: 4px;">
-                                Dashboard <span class="material-icons-round" style="font-size: 14px;">open_in_new</span>
-                            </a>
-                        </div>
-                    </div>
-
-                    <div id="deepgram-setup-steps" class="setup-steps"
-                        style="margin-top: 10px; font-size: 0.75rem; color: var(--text-muted); line-height: 1.4;">
-                        <p style="margin-bottom: 5px; font-weight: 600; color: var(--text-main);">How to get your
-                            key:</p>
-                        <ol style="padding-left: 15px;">
-                            <li>Go to <a href="https://console.deepgram.com/" target="_blank"
-                                    style="color: var(--accent);">Deepgram Console</a></li>
-                            <li>Sign up and create a new project</li>
-                            <li>Click "API Keys" → "Create New API Key"</li>
-                            <li>Copy and paste the key above</li>
-                        </ol>
-                    </div>
+                <!-- Topic Input (For all tiers) -->
+                <div class="input-group" style="text-align: left; margin-top: 20px;">
+                    <label>Interview Topic / Details</label>
+                    <input type="text" id="topic-input" placeholder="e.g. Java Backend Developer Interview">
                 </div>
 
-                <!-- Puter Connection Guard -->
-                <div id="puter-connect-area" class="hidden"
-                    style="margin-top: 20px; padding: 20px; border: 1px dashed rgba(255,255,255,0.2); border-radius: 12px; text-align: center;">
-                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 15px;">Connect your Puter
-                        account to fetch resource details and use AI insights.</p>
-                    <button id="connect-puter-btn" class="secondary-btn" style="width: 100%;">
-                        <span class="material-icons-round" style="font-size: 18px;">extension</span> Connect Puter
-                        Account
-                    </button>
-                </div>
-
-                <!-- Gated Meeting Setup -->
-                <div id="gated-meeting-area" class="hidden">
-                    <div class="input-group" style="text-align: left; margin-top: 20px;">
-                        <label>interview domain/details/topic</label>
-                        <input type="text" id="topic-input" placeholder="e.g. Java Backend Developer Interview">
-                    </div>
-
-                    <div class="controls-start" style="justify-content: center; margin-top: 20px;">
+                <!-- Gated Meeting Setup (Premium/BYOK Start Button) -->
+                <div id="gated-meeting-area" class="hidden" style="margin-top: 20px;">
+                    <div class="controls-start" style="justify-content: center;">
                         <button id="start-btn" class="primary-btn">
                             <span class="icon">▶</span> Start Session
                         </button>
                     </div>
+                    
+                    <div id="active-session-options" style="display: flex; justify-content: center; gap: 15px; margin-top: 15px;">
+                        <a href="#" id="change-keys-btn" style="font-size: 0.75rem; color: var(--text-muted); text-decoration: none; border-bottom: 1px dotted rgba(255,255,255,0.3);">⚙️ Change API Keys</a>
+                        <a href="https://wakeupai.lemonsqueezy.com/checkout/buy/cf61c317-7656-4dad-91cc-5351f067e5e8?embed=1" class="lemonsqueezy-button" style="font-size: 0.75rem; color: var(--primary); text-decoration: none;">💎 Upgrade to Premium</a>
+                    </div>
                 </div>
+
+                <!-- NEW: 3-Tier Setup Options -->
+                <div id="onboarding-options" class="hidden" style="margin-top: 20px;">
+                    <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom: 15px;">Choose how you want to use Wakeup AI:</p>
+                    
+                    <div class="onboarding-cards-grid">
+                        
+                        <!-- Card 1: Premium via Lemon Squeezy -->
+                        <div class="onboarding-card premium-card">
+                            <div class="card-badge">RECOMMENDED</div>
+                            <h3>Premium Copilot</h3>
+                            <p>Hassle-free AI. Instant access, no setup required. Use code <strong>LAUNCH20</strong> for 20% off.</p>
+                            <!-- Lemon Squeezy Button -->
+                            <a href="https://wakeupai.lemonsqueezy.com/checkout/buy/cf61c317-7656-4dad-91cc-5351f067e5e8?embed=1" class="lemonsqueezy-button primary-btn" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.9rem;">
+                                Subscribe for $29/mo
+                            </a>
+                        </div>
+                        
+                        <!-- Card 2: Skip & Try Demo -->
+                        <div class="onboarding-card demo-card">
+                            <h3>Try Demo</h3>
+                            <p>Free 5 questions per session to test it out.</p>
+                            <button id="start-demo-btn" class="secondary-btn" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.9rem;">
+                                Start 5-Q Demo
+                            </button>
+                        </div>
+
+                        <!-- Card 3: BYOK (Developer) -->
+                        <div class="onboarding-card dev-card" id="dev-card-options">
+                            <h3>Bring Your Own Keys (BYOK)</h3>
+                            <p>Free unlimited usage using your own API limits.</p>
+                            
+                            <button id="init-byok-btn" class="secondary-btn" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.9rem;">
+                                Setup BYOK
+                            </button>
+
+                            <div id="byok-setup-area" class="hidden" style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <label style="font-size: 0.8rem; color: var(--text-main);">1. Deepgram Key</label>
+                                    <a href="https://console.deepgram.com/signup" target="_blank" style="font-size: 0.7rem; color: var(--accent); text-decoration: none;">Get a free key &nearr;</a>
+                                </div>
+                                <div style="display: flex; gap: 8px; margin-top: 5px;">
+                                    <input type="password" id="deepgram-key-input" placeholder="Paste Key Here" style="flex: 1; padding: 8px; font-size: 0.8rem;">
+                                    <button id="validate-key-btn" class="secondary-btn" style="padding: 0 10px; font-size: 0.8rem;">Save</button>
+                                </div>
+                                
+                                <!-- Deepgram Status -->
+                                <div id="dg-status-container" class="hidden" style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <div id="dg-indicator" style="width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted);"></div>
+                                        <span style="font-size: 0.75rem; color: var(--text-muted);">Status:</span>
+                                        <span id="dg-usage" style="font-size: 0.75rem; font-weight: 500; color: var(--text-main);">Checking...</span>
+                                    </div>
+                                </div>
+                                
+                                <label style="font-size: 0.8rem; color: var(--text-main); display: block; margin-top: 15px;">2. Puter Account</label>
+                                <div id="puter-connect-area" style="margin-top: 5px;">
+                                    <button id="connect-puter-btn" class="secondary-btn" style="width: 100%; padding: 8px; font-size: 0.8rem; justify-content: center;">
+                                        <span class="material-icons-round" style="font-size: 14px;">extension</span> Connect Puter (Free)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                </div>
+
 
                 <!-- Resource Status Dashboard (Puter Only Now) -->
                 <div id="resource-status-card" class="glass-card usage-card hidden"
@@ -329,7 +342,9 @@
     <div id="toast" class="hidden">Notification</div>
 
     <script src="backend/config.js"></script>
-    <script src="script.js?v=64"></script>
+    <script src="script.js?v=65"></script>
+    <!-- Lemon Squeezy JS -->
+    <script src="https://assets.lemonsqueezy.com/lemon.js" defer></script>
 </body>
 
 </html>
