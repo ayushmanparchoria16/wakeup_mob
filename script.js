@@ -82,12 +82,12 @@ const buttons = {
     backLogin: document.getElementById('back-to-login-btn'),
     logout: document.getElementById('logout-link'),
     switchAccount: document.getElementById('switch-account-link'),
-    validateKey: document.getElementById('validate-key-btn'),
     connectPuter: document.getElementById('connect-puter-btn'),
     initByokBtn: document.getElementById('init-byok-btn'),
     startDemoBtn: document.getElementById('start-demo-btn'),
     showDevCardBtn: document.getElementById('show-dev-card-btn'),
-    changeKeysBtn: document.getElementById('change-keys-btn')
+    changeKeysBtn: document.getElementById('change-keys-btn'),
+    upgradePremiumLink: document.getElementById('upgrade-premium-link')
 };
 
 const displays = {
@@ -114,7 +114,8 @@ const displays = {
     puterResetArea: document.getElementById('puter-reset-area'),
     onboardingOptions: document.getElementById('onboarding-options'),
     devCardOptions: document.getElementById('dev-card-options'),
-    byokSetupArea: document.getElementById('byok-setup-area')
+    byokSetupArea: document.getElementById('byok-setup-area'),
+    activeSessionOptions: document.getElementById('active-session-options')
 };
 
 // --- Initialization ---
@@ -321,6 +322,12 @@ function checkSetupStatus() {
 
     // Tier Logic
     const isPremium = state.currentUser?.SubscriptionStatus === 'Active';
+    
+    // Hide upgrade link if already premium
+    if (buttons.upgradePremiumLink) {
+        if (isPremium) buttons.upgradePremiumLink.classList.add('hidden');
+        else buttons.upgradePremiumLink.classList.remove('hidden');
+    }
 
     // Meeting Gating
     if (isPremium || (isPuterReady && isDeepgramReady)) {

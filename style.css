@@ -141,6 +141,7 @@ body {
     justify-content: center;
     align-items: center;
     padding: 20px;
+    overflow-y: auto;
 }
 
 .auth-tabs {
@@ -216,6 +217,7 @@ body {
     max-width: 400px;
     text-align: center;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    margin: auto 0; /* Helps center vertically within scrolling container */
 }
 
 .glass-card h1 {
