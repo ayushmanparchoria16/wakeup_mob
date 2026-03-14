@@ -127,6 +127,21 @@ function init() {
             state.currentUser = JSON.parse(savedUser);
             displays.userName.textContent = state.currentUser.displayName || state.currentUser.email.split('@')[0];
             switchScreen('setup');
+            
+            // Background refresh to catch manual SubscriptionStatus changes
+            const params = new URLSearchParams();
+            params.append('action', 'getUser');
+            params.append('email', state.currentUser.email);
+            fetch(GOOGLE_URL, { method: 'POST', body: params })
+                .then(r => r.json())
+                .then(data => {
+                    if(data.status === 'success' && data.user) {
+                        state.currentUser = data.user;
+                        localStorage.setItem('wakeup_user', JSON.stringify(data.user));
+                        checkSetupStatus(); // refresh UI based on latest tier
+                    }
+                }).catch(e => console.error("Silent user refresh failed", e));
+
         } catch (e) {
             console.error("Failed to parse user", e);
             switchScreen('auth');
@@ -822,13 +837,35 @@ async function startSession(isDemo = false) {
         
         // Save Deepgram Key
         if (inputs.deepgramKey) {
-            state.deepgramKey = inputs.deepgramKey.value.trim();
-            localStorage.setItem('deepgram_api_key', state.deepgramKey);
+            state.deepgramKey = inputs.deepgramKey.value.trim() || localStorage.getItem('deepgram_api_key') || "";
+            if (state.deepgramKey) localStorage.setItem('deepgram_api_key', state.deepgramKey);
         }
 
         if (!state.deepgramKey && !isPremium) {
             showToast("Please enter a Deepgram API Key or Subscribe");
             return;
+        }
+
+        // If Premium user, and they don't have a BYOK key configured, 
+        // silently grab a pooled demo key for them without the 5-Q limit
+        if (isPremium && !state.deepgramKey) {
+            try {
+                const params = new URLSearchParams();
+                params.append('action', 'getDemoKey');
+                params.append('email', state.currentUser.email);
+                const res = await fetch(GOOGLE_URL, { method: 'POST', body: params });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    state.deepgramKey = data.apiKey;
+                } else {
+                    showToast("Failed to acquire active Premium key. Please check your setup.");
+                    return;
+                }
+            } catch(e) {
+                showToast("Premium key routing failed.");
+                console.error(e);
+                return;
+            }
         }
     }
 
