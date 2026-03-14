@@ -323,10 +323,10 @@ function checkSetupStatus() {
     // Tier Logic
     const isPremium = state.currentUser?.SubscriptionStatus === 'Active';
     
-    // Hide upgrade link if already premium
-    if (buttons.upgradePremiumLink) {
-        if (isPremium) buttons.upgradePremiumLink.classList.add('hidden');
-        else buttons.upgradePremiumLink.classList.remove('hidden');
+    // Hide the options row entirely if already premium
+    if (displays.activeSessionOptions) {
+        if (isPremium) displays.activeSessionOptions.classList.add('hidden');
+        else displays.activeSessionOptions.classList.remove('hidden');
     }
 
     // Meeting Gating
