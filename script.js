@@ -127,7 +127,7 @@ function init() {
             state.currentUser = JSON.parse(savedUser);
             displays.userName.textContent = state.currentUser.displayName || state.currentUser.email.split('@')[0];
             switchScreen('setup');
-            
+
             // Background refresh to catch manual SubscriptionStatus changes
             const params = new URLSearchParams();
             params.append('action', 'getUser');
@@ -135,7 +135,7 @@ function init() {
             fetch(GOOGLE_URL, { method: 'POST', body: params })
                 .then(r => r.json())
                 .then(data => {
-                    if(data.status === 'success' && data.user) {
+                    if (data.status === 'success' && data.user) {
                         state.currentUser = data.user;
                         localStorage.setItem('wakeup_user', JSON.stringify(data.user));
                         checkSetupStatus(); // refresh UI based on latest tier
@@ -262,7 +262,7 @@ function init() {
             checkSetupStatus();
         });
     }
-    
+
     if (buttons.changeKeysBtn) {
         buttons.changeKeysBtn.addEventListener('click', (e) => {
             e.preventDefault();
@@ -326,7 +326,7 @@ function checkSetupStatus() {
     if (isPremium || (isPuterReady && isDeepgramReady)) {
         if (displays.onboardingOptions) displays.onboardingOptions.classList.add('hidden');
         if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.remove('hidden');
-        
+
         // If Deepgram is ready (BYOK path), update button visually
         if (isDeepgramReady && buttons.validateKey) {
             buttons.validateKey.innerHTML = '<span class="material-icons-round" style="font-size: 16px; color: #4ade80;">check_circle</span> Saved';
@@ -337,7 +337,7 @@ function checkSetupStatus() {
     } else {
         if (displays.onboardingOptions) displays.onboardingOptions.classList.remove('hidden');
         if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.add('hidden');
-        
+
         if (!isDeepgramReady) {
             if (buttons.validateKey) {
                 buttons.validateKey.innerHTML = 'Save';
@@ -827,14 +827,14 @@ async function startSession(isDemo = false) {
                 showToast("Demo unavailable right now. " + (data.message || ""));
                 return;
             }
-        } catch(e) {
+        } catch (e) {
             showToast("Failed to fetch Demo session details.");
             console.error(e);
             return;
         }
     } else {
         const isPremium = state.currentUser?.SubscriptionStatus === 'Active';
-        
+
         // Save Deepgram Key
         if (inputs.deepgramKey) {
             state.deepgramKey = inputs.deepgramKey.value.trim() || localStorage.getItem('deepgram_api_key') || "";
@@ -861,7 +861,7 @@ async function startSession(isDemo = false) {
                     showToast("Failed to acquire active Premium key. Please check your setup.");
                     return;
                 }
-            } catch(e) {
+            } catch (e) {
                 showToast("Premium key routing failed.");
                 console.error(e);
                 return;
@@ -987,7 +987,7 @@ async function triggerAI(text, type = "SPEECH") {
     if (state.isDemoMode) {
         if (state.demoResponsesCount >= 5) {
             showToast("Demo Limit Reached (5/5). Please Subscribe for unlimited access.", 5000);
-            
+
             // Optionally auto-end the session after limit is reached
             setTimeout(endSession, 3000);
             return;
