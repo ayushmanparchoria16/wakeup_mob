@@ -131,6 +131,7 @@ function handleRequest(params) {
         };
 
         const subStatusCol = getColIdx("SubscriptionStatus");
+        const subExpiryCol = getColIdx("SubscriptionExpiry");
 
         // --- ACTION: REGISTER ---
         if (action === 'register') {
@@ -180,6 +181,10 @@ function handleRequest(params) {
                     sheet.getRange(1, newColIdx).setValue("SubscriptionStatus").setFontWeight("bold");
                     sheet.getRange(sheet.getLastRow(), newColIdx).setValue("Free");
                 }
+                if (subExpiryCol === -1) {
+                    const newColIdx = sheet.getLastColumn() + 1;
+                    sheet.getRange(1, newColIdx).setValue("SubscriptionExpiry").setFontWeight("bold");
+                }
 
                 response.status = 'success';
                 response.message = 'Registration successful.';
@@ -201,8 +206,12 @@ function handleRequest(params) {
                     sheet.getRange(i + 1, 6).setValue('online');
 
                     let subStatus = "Free";
+                    let subExpiry = "";
                     if (subStatusCol > -1) {
                         subStatus = data[i][subStatusCol] || "Free";
+                    }
+                    if (subExpiryCol > -1) {
+                        subExpiry = data[i][subExpiryCol] || "";
                     }
 
                     response.status = 'success';
@@ -211,7 +220,8 @@ function handleRequest(params) {
                         displayName: data[i][2],
                         totalMinutesUsed: data[i][3],
                         lastLogin: new Date().toISOString(),
-                        SubscriptionStatus: subStatus
+                        SubscriptionStatus: subStatus,
+                        SubscriptionExpiry: subExpiry
                     };
                     found = true;
                     break;
@@ -226,8 +236,12 @@ function handleRequest(params) {
             for (let i = 1; i < data.length; i++) {
                 if (data[i][0].toString().toLowerCase() === email) {
                     let subStatus = "Free";
+                    let subExpiry = "";
                     if (subStatusCol > -1) {
                         subStatus = data[i][subStatusCol] || "Free";
+                    }
+                    if (subExpiryCol > -1) {
+                        subExpiry = data[i][subExpiryCol] || "";
                     }
 
                     response.status = 'success';
@@ -237,7 +251,8 @@ function handleRequest(params) {
                         totalMinutesUsed: data[i][3],
                         lastLogin: data[i][4],
                         status: data[i][5],
-                        SubscriptionStatus: subStatus
+                        SubscriptionStatus: subStatus,
+                        SubscriptionExpiry: subExpiry
                     };
                     break;
                 }

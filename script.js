@@ -115,7 +115,9 @@ const displays = {
     onboardingOptions: document.getElementById('onboarding-options'),
     devCardOptions: document.getElementById('dev-card-options'),
     byokSetupArea: document.getElementById('byok-setup-area'),
-    activeSessionOptions: document.getElementById('active-session-options')
+    activeSessionOptions: document.getElementById('active-session-options'),
+    premiumBadge: document.getElementById('premium-badge'),
+    premiumExpiry: document.getElementById('premium-expiry')
 };
 
 // --- Initialization ---
@@ -322,6 +324,25 @@ function checkSetupStatus() {
 
     // Tier Logic
     const isPremium = state.currentUser?.SubscriptionStatus === 'Active';
+    
+    // Premium Badge & Expiry UI
+    if (displays.premiumBadge) {
+        if (isPremium) {
+            displays.premiumBadge.classList.remove('hidden');
+            if (displays.premiumExpiry && state.currentUser.SubscriptionExpiry) {
+                try {
+                    const d = new Date(state.currentUser.SubscriptionExpiry);
+                    if (!isNaN(d)) {
+                        displays.premiumExpiry.textContent = "Expires: " + d.toLocaleDateString();
+                        displays.premiumExpiry.classList.remove('hidden');
+                    }
+                } catch(e) {}
+            }
+        } else {
+            displays.premiumBadge.classList.add('hidden');
+            if (displays.premiumExpiry) displays.premiumExpiry.classList.add('hidden');
+        }
+    }
     
     // Hide the options row entirely if already premium
     if (displays.activeSessionOptions) {
