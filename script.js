@@ -189,7 +189,7 @@ function init() {
             localStorage.removeItem('deepgram_api_key');
 
             if (buttons.validateKey) {
-                buttons.validateKey.innerHTML = 'Check';
+                buttons.validateKey.innerHTML = 'Verify';
                 buttons.validateKey.style.borderColor = "";
                 buttons.validateKey.style.color = "";
             }
@@ -373,12 +373,16 @@ function checkSetupStatus() {
             // Show BYOK status
             if (displays.dgStatusContainer) displays.dgStatusContainer.classList.remove('hidden');
             if (buttons.validateKey) {
-                buttons.validateKey.innerHTML = '<span class="material-icons-round" style="font-size: 16px; color: #4ade80;">check_circle</span> Saved';
+                buttons.validateKey.innerHTML = '<span class="material-icons-round" style="font-size: 16px; color: #4ade80;">check_circle</span> Verified';
                 buttons.validateKey.style.borderColor = "#4ade80";
                 buttons.validateKey.style.color = "#4ade80";
             }
         } else {
             if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.add('hidden');
+            // If they are not ready, revert button label if no key
+            if (!isDeepgramReady && buttons.validateKey) {
+                buttons.validateKey.innerHTML = 'Verify';
+            }
         }
     }
 
@@ -994,7 +998,7 @@ async function handleKeyValidation() {
         localStorage.setItem('deepgram_api_key', key);
 
         // UI Updates
-        buttons.validateKey.innerHTML = '<span class="material-icons-round" style="font-size: 16px; color: #4ade80;">check_circle</span> Saved';
+        buttons.validateKey.innerHTML = '<span class="material-icons-round" style="font-size: 16px; color: #4ade80;">check_circle</span> Verified';
         buttons.validateKey.style.borderColor = "#4ade80";
         buttons.validateKey.style.color = "#4ade80";
 
@@ -1009,7 +1013,7 @@ async function handleKeyValidation() {
     } catch (err) {
         console.error("Deepgram Validation Error:", err);
         showToast("❌ Invalid Key or Connection Issue", 3000);
-        buttons.validateKey.innerHTML = 'Check';
+        buttons.validateKey.innerHTML = 'Verify';
         buttons.validateKey.style.borderColor = "";
         buttons.validateKey.style.color = "";
         checkSetupStatus();
