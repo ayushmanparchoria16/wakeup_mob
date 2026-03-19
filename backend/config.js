@@ -126,13 +126,26 @@ function handleRequest(params) {
         const data = sheet.getDataRange().getValues();
         // Helper to find column index by name
         const getColIdx = (colName) => {
-            const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-            return headers.indexOf(colName);
+            const currentHeaders = sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0];
+            return currentHeaders.indexOf(colName);
+        };
+
+        const getOrCreateCol = (colName) => {
+            let idx = getColIdx(colName);
+            if (idx === -1) {
+                idx = sheet.getLastColumn();
+                sheet.getRange(1, idx + 1).setValue(colName).setFontWeight("bold");
+                return idx;
+            }
+            return idx;
         };
 
         const subStatusCol = getColIdx("SubscriptionStatus");
         const subExpiryCol = getColIdx("SubscriptionExpiry");
-        const demoCountCol = getColIdx("DemoSessionsDone");
+        const demoCountCol = getOrCreateCol("DemoSessionsDone");
+        const demoDateCol = getOrCreateCol("LastDemoAt");
+        const pooledColIdx = getOrCreateCol("PooledApiTotalMinUsed");
+        const dgKeyColIdx = getOrCreateCol("DeepgramKey");
 
         // --- ACTION: REGISTER ---
         if (action === 'register') {
@@ -320,25 +333,11 @@ function handleRequest(params) {
         else if (action === 'getDemoKey') {
             const email = params.email ? params.email.trim().toLowerCase() : "";
             
-            const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-            let keyColIdx = headers.indexOf("DeepgramKey"); // 0-indexed for array
-            let demoCountCol = headers.indexOf("DemoSessionsDone");
-            let demoDateCol = headers.indexOf("LastDemoAt");
-            let pooledColIdx = headers.indexOf("PooledApiTotalMinUsed");
-
-            // Ensure our new tracking columns exist
-            if (demoCountCol === -1) {
-                demoCountCol = sheet.getLastColumn();
-                sheet.getRange(1, demoCountCol + 1).setValue("DemoSessionsDone").setFontWeight("bold");
-            }
-            if (demoDateCol === -1) {
-                demoDateCol = sheet.getLastColumn();
-                sheet.getRange(1, demoDateCol + 1).setValue("LastDemoAt").setFontWeight("bold");
-            }
-            if (pooledColIdx === -1) {
-                pooledColIdx = sheet.getLastColumn();
-                sheet.getRange(1, pooledColIdx + 1).setValue("PooledApiTotalMinUsed").setFontWeight("bold");
-            }
+            // Columns already initialized by getOrCreateCol helper at start of handleRequest
+            const keyColIdx = getColIdx("DeepgramKey");
+            const demoCountCol = getColIdx("DemoSessionsDone");
+            const demoDateCol = getColIdx("LastDemoAt");
+            const pooledColIdx = getColIdx("PooledApiTotalMinUsed");
             
             if (keyColIdx === -1) {
                 return createJsonResponse({ status: 'error', message: 'No Deepgram keys available in database.' });
@@ -516,19 +515,12 @@ function handleRequest(params) {
                 return createJsonResponse({ status: 'error', message: 'Email and Key are required.' });
             }
 
-            // Ensure column exists (Column 8: DeepgramKey)
-            const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-            let keyColIdx = headers.indexOf("DeepgramKey") + 1;
-
-            if (keyColIdx === 0) {
-                keyColIdx = sheet.getLastColumn() + 1;
-                sheet.getRange(1, keyColIdx).setValue("DeepgramKey").setFontWeight("bold");
-            }
+            const keyColIdx = getOrCreateCol("DeepgramKey");
 
             let found = false;
             for (let i = 1; i < data.length; i++) {
                 if (data[i][0].toString().toLowerCase() === email) {
-                    sheet.getRange(i + 1, keyColIdx).setValue(key);
+                    sheet.getRange(i + 1, keyColIdx + 1).setValue(key);
                     response.status = 'success';
                     response.message = 'Key persisted.';
                     found = true;
