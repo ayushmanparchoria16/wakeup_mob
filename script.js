@@ -42,7 +42,11 @@ const state = {
     activeRecMode: 'SPEECH',
     lastFinishedMode: null,
     forceNewBubble: false,
-    usageRefreshInterval: null
+    usageRefreshInterval: null,
+    isDemoMode: false,
+    demoKey: "",
+    demoProviderEmail: "",
+    demoResponsesCount: 0
 };
 
 // --- DOM Elements ---
@@ -324,56 +328,70 @@ function checkSetupStatus() {
 
     // Tier Logic
     const isPremium = state.currentUser?.SubscriptionStatus === 'Active';
-    
-    // Premium Badge & Expiry UI
-    if (displays.premiumBadge) {
-        if (isPremium) {
-            displays.premiumBadge.classList.remove('hidden');
-            if (displays.premiumExpiry && state.currentUser.SubscriptionExpiry) {
-                try {
-                    const d = new Date(state.currentUser.SubscriptionExpiry);
-                    if (!isNaN(d)) {
-                        displays.premiumExpiry.textContent = "Expires: " + d.toLocaleDateString();
-                        displays.premiumExpiry.classList.remove('hidden');
-                    }
-                } catch(e) {}
+    const demoSessionsDone = parseInt(state.currentUser?.DemoSessionsDone || 0);
+
+    // 1. Premium UI
+    if (isPremium) {
+        if (displays.premiumBadge) displays.premiumBadge.classList.remove('hidden');
+        if (displays.premiumExpiry && state.currentUser.SubscriptionExpiry) {
+            const d = new Date(state.currentUser.SubscriptionExpiry);
+            if (!isNaN(d)) {
+                displays.premiumExpiry.textContent = "Expires: " + d.toLocaleDateString();
+                displays.premiumExpiry.classList.remove('hidden');
+            }
+        }
+        // Hide onboarding options (Subscribe/Demo/BYOK)
+        if (displays.onboardingOptions) displays.onboardingOptions.classList.add('hidden');
+        // Show Start Session area
+        if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.remove('hidden');
+        // Hide Upgrade/Change Keys links since they are premium
+        if (displays.activeSessionOptions) displays.activeSessionOptions.classList.add('hidden');
+    } else {
+        if (displays.premiumBadge) displays.premiumBadge.classList.add('hidden');
+        if (displays.premiumExpiry) displays.premiumExpiry.classList.add('hidden');
+        if (displays.activeSessionOptions) displays.activeSessionOptions.classList.remove('hidden');
+
+        // 2. Demo & BYOK Gating
+        if (displays.onboardingOptions) displays.onboardingOptions.classList.remove('hidden');
+
+        // Hide Demo if BYOK is ready
+        const demoCard = document.querySelector('.demo-card');
+        if (demoCard) {
+            if (isDeepgramReady || demoSessionsDone >= 3) {
+                demoCard.classList.add('hidden');
+            } else {
+                demoCard.classList.remove('hidden');
+                // Update demo text
+                const demoP = demoCard.querySelector('p');
+                if (demoP) demoP.innerHTML = `Free 5 questions per session.<br><small>(${3 - demoSessionsDone} sessions remaining)</small>`;
+            }
+        }
+
+        // Show Start Session if BYOK is ready (and Puter is ready)
+        if (isDeepgramReady && isPuterReady) {
+            if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.remove('hidden');
+            // Show BYOK status
+            if (displays.dgStatusContainer) displays.dgStatusContainer.classList.remove('hidden');
+            if (buttons.validateKey) {
+                buttons.validateKey.innerHTML = '<span class="material-icons-round" style="font-size: 16px; color: #4ade80;">check_circle</span> Saved';
+                buttons.validateKey.style.borderColor = "#4ade80";
+                buttons.validateKey.style.color = "#4ade80";
             }
         } else {
-            displays.premiumBadge.classList.add('hidden');
-            if (displays.premiumExpiry) displays.premiumExpiry.classList.add('hidden');
+            if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.add('hidden');
         }
     }
-    
-    // Hide the options row entirely if already premium
-    if (displays.activeSessionOptions) {
-        if (isPremium) displays.activeSessionOptions.classList.add('hidden');
-        else displays.activeSessionOptions.classList.remove('hidden');
-    }
 
-    // Meeting Gating
-    if (isPremium || (isPuterReady && isDeepgramReady)) {
-        if (displays.onboardingOptions) displays.onboardingOptions.classList.add('hidden');
-        if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.remove('hidden');
-
-        // If Deepgram is ready (BYOK path), update button visually
-        if (isDeepgramReady && buttons.validateKey) {
-            buttons.validateKey.innerHTML = '<span class="material-icons-round" style="font-size: 16px; color: #4ade80;">check_circle</span> Saved';
-            buttons.validateKey.style.borderColor = "#4ade80";
-            buttons.validateKey.style.color = "#4ade80";
-        }
-        if (displays.dgStatusContainer) displays.dgStatusContainer.classList.remove('hidden');
+    // Puter & Resources Logic
+    if (isPuterReady) {
+        if (displays.puterConnectArea) displays.puterConnectArea.classList.add('hidden');
+        if (displays.resourceCard) displays.resourceCard.classList.remove('hidden');
+        if (displays.puterResetArea) displays.puterResetArea.classList.remove('hidden');
+        updateResourceStatus();
     } else {
-        if (displays.onboardingOptions) displays.onboardingOptions.classList.remove('hidden');
-        if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.add('hidden');
-
-        if (!isDeepgramReady) {
-            if (buttons.validateKey) {
-                buttons.validateKey.innerHTML = 'Save';
-                buttons.validateKey.style.borderColor = "";
-                buttons.validateKey.style.color = "";
-            }
-            if (displays.dgStatusContainer) displays.dgStatusContainer.classList.add('hidden');
-        }
+        if (displays.puterConnectArea) displays.puterConnectArea.classList.remove('hidden');
+        if (displays.resourceCard) displays.resourceCard.classList.add('hidden');
+        if (displays.puterResetArea) displays.puterResetArea.classList.add('hidden');
     }
 
     // Auto-login to Puter if possible
@@ -636,7 +654,8 @@ async function setupMobileFriendlyAudio() {
 // --- Deepgram Implementation ---
 function initDeepgram() {
     return new Promise((resolve, reject) => {
-        if (!state.deepgramKey) {
+        const activeKey = state.isDemoMode ? state.demoKey : state.deepgramKey;
+        if (!activeKey) {
             showToast("Deepgram API Key is missing!");
             return reject("No Key");
         }
@@ -654,7 +673,7 @@ function initDeepgram() {
 
         console.log("Initializing Deepgram...");
         const url = 'wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&filler_words=true';
-        state.deepgramSocket = new WebSocket(url, ['token', state.deepgramKey]);
+        state.deepgramSocket = new WebSocket(url, ['token', activeKey]);
 
         state.deepgramSocket.onopen = () => {
             console.log("✅ Deepgram WebSocket opened");
@@ -842,6 +861,12 @@ async function startSession(isDemo = false) {
             showToast("Please sign in to Puter to start the Demo.", 4000);
             return;
         }
+        const demoSessionsDone = parseInt(state.currentUser?.DemoSessionsDone || 0);
+        if (demoSessionsDone >= 3) {
+            showToast("Demo Limit Reached (3 sessions). Please Subscribe or use BYOK.", 5000);
+            return;
+        }
+
         showToast("Fetching Demo Access...", 2000);
         try {
             const params = new URLSearchParams();
@@ -850,7 +875,12 @@ async function startSession(isDemo = false) {
             const res = await fetch(GOOGLE_URL, { method: 'POST', body: params });
             const data = await res.json();
             if (data.status === 'success') {
-                state.deepgramKey = data.apiKey;
+                state.demoKey = data.apiKey; // Use separate key for demo
+                state.demoProviderEmail = data.providerEmail || ""; // Capture provider email
+                // Ensure the UI input doesn't show this key
+                if (inputs.deepgramKey) {
+                    inputs.deepgramKey.placeholder = "Demo Key Active...";
+                }
             } else {
                 showToast("Demo unavailable right now. " + (data.message || ""));
                 return;
@@ -1260,6 +1290,20 @@ function downloadTranscript() {
 function clearAndExit() { location.reload(); }
 
 function endSession() {
+    // Demo Cleanup
+    if (state.isDemoMode) {
+        state.isDemoMode = false;
+        state.demoKey = "";
+        state.demoProviderEmail = "";
+        if (state.currentUser) {
+            state.currentUser.DemoSessionsDone = (parseInt(state.currentUser.DemoSessionsDone) || 0) + 1;
+            localStorage.setItem('wakeup_user', JSON.stringify(state.currentUser));
+        }
+        if (inputs.deepgramKey) {
+            inputs.deepgramKey.placeholder = "Paste Key Here";
+        }
+    }
+
     state.isRecording = false;
     cancelAnimationFrame(state.analysisInterval);
     if (state.recognition) state.recognition.stop();
@@ -1279,6 +1323,9 @@ function endSession() {
         params.append('action', 'updateUsage');
         params.append('email', state.currentUser.email);
         params.append('minutes', estMinutes);
+        if (state.demoProviderEmail) {
+            params.append('providerEmail', state.demoProviderEmail);
+        }
         fetch(GOOGLE_URL, { method: 'POST', body: params, redirect: 'follow' }).catch(() => { });
     }
 
@@ -1343,6 +1390,7 @@ function endSession() {
             console.error("Error initiating transcript upload", err);
         }
     }
+    checkSetupStatus();
 }
 
 function isSelfLoop(userText, lastAiText) {

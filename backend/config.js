@@ -132,6 +132,7 @@ function handleRequest(params) {
 
         const subStatusCol = getColIdx("SubscriptionStatus");
         const subExpiryCol = getColIdx("SubscriptionExpiry");
+        const demoCountCol = getColIdx("DemoSessionsDone");
 
         // --- ACTION: REGISTER ---
         if (action === 'register') {
@@ -163,6 +164,11 @@ function handleRequest(params) {
                     'offline',
                     new Date().toISOString()
                 ];
+                
+                if (demoCountCol === -1) {
+                    const newColIdx = sheet.getLastColumn() + 1;
+                    sheet.getRange(1, newColIdx).setValue("DemoSessionsDone").setFontWeight("bold");
+                }
                 
                 // If the column doesn't exist yet, we will just add the row normally.
                 // The Google Sheets API schema might get misaligned if we forcefully pad it,
@@ -213,6 +219,10 @@ function handleRequest(params) {
                     if (subExpiryCol > -1) {
                         subExpiry = data[i][subExpiryCol] || "";
                     }
+                    let demoSessionsDone = 0;
+                    if (demoCountCol > -1) {
+                        demoSessionsDone = parseFloat(data[i][demoCountCol]) || 0;
+                    }
 
                     response.status = 'success';
                     response.user = {
@@ -221,7 +231,8 @@ function handleRequest(params) {
                         totalMinutesUsed: data[i][3],
                         lastLogin: new Date().toISOString(),
                         SubscriptionStatus: subStatus,
-                        SubscriptionExpiry: subExpiry
+                        SubscriptionExpiry: subExpiry,
+                        DemoSessionsDone: demoSessionsDone
                     };
                     found = true;
                     break;
@@ -243,6 +254,10 @@ function handleRequest(params) {
                     if (subExpiryCol > -1) {
                         subExpiry = data[i][subExpiryCol] || "";
                     }
+                    let demoSessionsDone = 0;
+                    if (demoCountCol > -1) {
+                        demoSessionsDone = parseFloat(data[i][demoCountCol]) || 0;
+                    }
 
                     response.status = 'success';
                     response.user = {
@@ -252,7 +267,8 @@ function handleRequest(params) {
                         lastLogin: data[i][4],
                         status: data[i][5],
                         SubscriptionStatus: subStatus,
-                        SubscriptionExpiry: subExpiry
+                        SubscriptionExpiry: subExpiry,
+                        DemoSessionsDone: demoSessionsDone
                     };
                     break;
                 }
@@ -262,17 +278,30 @@ function handleRequest(params) {
         // --- ACTION: UPDATE USAGE MINUTES ---
         else if (action === 'updateUsage') {
             const email = params.email ? params.email.trim().toLowerCase() : "";
+            const providerEmail = params.providerEmail ? params.providerEmail.trim().toLowerCase() : "";
             const mins = parseFloat(params.minutes) || 0;
 
             for (let i = 1; i < data.length; i++) {
-                if (data[i][0].toString().toLowerCase() === email) {
+                const sheetEmail = data[i][0].toString().toLowerCase();
+                if (sheetEmail === email) {
                     const current = parseFloat(data[i][3]) || 0;
                     sheet.getRange(i + 1, 4).setValue(current + mins);
-                    response.status = 'success';
-                    response.message = 'Usage synced.';
-                    break;
+                }
+                if (providerEmail && sheetEmail === providerEmail) {
+                    const pooledColIdx = getColIdx("PooledApiTotalMinUsed");
+                    if (pooledColIdx > -1) {
+                        const currentPooled = parseFloat(data[i][pooledColIdx]) || 0;
+                        sheet.getRange(i + 1, pooledColIdx + 1).setValue(currentPooled + mins);
+                    } else {
+                        // Create column if missing and update
+                        const newColIdx = sheet.getLastColumn() + 1;
+                        sheet.getRange(1, newColIdx).setValue("PooledApiTotalMinUsed").setFontWeight("bold");
+                        sheet.getRange(i + 1, newColIdx).setValue(mins);
+                    }
                 }
             }
+            response.status = 'success';
+            response.message = 'Usage synced.';
         }
 
         // --- ACTION: LOGOUT ---
@@ -295,6 +324,7 @@ function handleRequest(params) {
             let keyColIdx = headers.indexOf("DeepgramKey"); // 0-indexed for array
             let demoCountCol = headers.indexOf("DemoSessionsDone");
             let demoDateCol = headers.indexOf("LastDemoAt");
+            let pooledColIdx = headers.indexOf("PooledApiTotalMinUsed");
 
             // Ensure our new tracking columns exist
             if (demoCountCol === -1) {
@@ -305,24 +335,32 @@ function handleRequest(params) {
                 demoDateCol = sheet.getLastColumn();
                 sheet.getRange(1, demoDateCol + 1).setValue("LastDemoAt").setFontWeight("bold");
             }
+            if (pooledColIdx === -1) {
+                pooledColIdx = sheet.getLastColumn();
+                sheet.getRange(1, pooledColIdx + 1).setValue("PooledApiTotalMinUsed").setFontWeight("bold");
+            }
             
             if (keyColIdx === -1) {
                 return createJsonResponse({ status: 'error', message: 'No Deepgram keys available in database.' });
             }
 
             let leastUsedKey = null;
-            let lowestMinutes = Infinity;
+            let lowestAggregateMinutes = Infinity;
             let keyProviderRowIdx = -1;
+            let providerEmail = "";
 
             for (let i = 1; i < data.length; i++) {
                 const key = data[i][keyColIdx];
                 const minutes = parseFloat(data[i][3]) || 0; // Column 4 is TotalMinutesUsed (index 3)
+                const pooledMinutes = (pooledColIdx > -1) ? (parseFloat(data[i][pooledColIdx]) || 0) : 0;
+                const aggregateMinutes = minutes + pooledMinutes;
                 
                 if (key && typeof key === 'string' && key.trim().length > 10) {
-                    if (minutes < lowestMinutes) {
-                        lowestMinutes = minutes;
+                    if (aggregateMinutes < lowestAggregateMinutes) {
+                        lowestAggregateMinutes = aggregateMinutes;
                         leastUsedKey = key.trim();
-                        keyProviderRowIdx = i + 1; // +1 because array is 0-indexed but sheets are 1-indexed (and row 1 is header)
+                        providerEmail = data[i][0]; // Email is column A (index 0)
+                        keyProviderRowIdx = i + 1;
                     }
                 }
             }
@@ -332,8 +370,7 @@ function handleRequest(params) {
                 
                 // 1. Update the Key Provider's stats
                 if (keyProviderRowIdx > -1) {
-                    const currentProviderCount = parseFloat(sheet.getRange(keyProviderRowIdx, demoCountCol + 1).getValue()) || 0;
-                    sheet.getRange(keyProviderRowIdx, demoCountCol + 1).setValue(currentProviderCount + 1);
+                    // Only update LastDemoAt for provider, NOT DemoSessionsDone
                     sheet.getRange(keyProviderRowIdx, demoDateCol + 1).setValue(nowStr);
                 }
 
@@ -349,6 +386,8 @@ function handleRequest(params) {
                         }
                     }
                 }
+                
+                response.providerEmail = providerEmail;
 
                 response.status = 'success';
                 response.apiKey = leastUsedKey;
