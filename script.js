@@ -91,7 +91,8 @@ const buttons = {
     startDemoBtn: document.getElementById('start-demo-btn'),
     showDevCardBtn: document.getElementById('show-dev-card-btn'),
     changeKeysBtn: document.getElementById('change-keys-btn'),
-    upgradePremiumLink: document.getElementById('upgrade-premium-link')
+    upgradePremiumLink: document.getElementById('upgrade-premium-link'),
+    validateKey: document.getElementById('validate-key-btn')
 };
 
 const displays = {
