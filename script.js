@@ -46,7 +46,8 @@ const state = {
     isDemoMode: false,
     demoKey: "",
     demoProviderEmail: "",
-    demoResponsesCount: 0
+    demoResponsesCount: 0,
+    pendingScreenshots: []
 };
 
 // --- DOM Elements ---
@@ -1172,6 +1173,21 @@ function toggleMic() {
 
     // "Answer Now" Logic
     const finalPayload = (state.currentSessionBuffer + (state.pendingBuffer || "")).trim();
+
+    if (state.pendingScreenshots && state.pendingScreenshots.length > 0) {
+        analyzePendingScreenshots(finalPayload);
+        
+        // Comprehensive Buffer Release
+        state.currentSessionBuffer = "";
+        state.pendingBuffer = "";
+        state.silenceStartTime = 0;
+        state.forceNewBubble = true;
+        updateTranscriptUI("", "", 'SPEECH');
+        
+        showToast("Analyzing screenshots...");
+        return;
+    }
+
     if (finalPayload.length > 0) {
         triggerAI(finalPayload);
 
@@ -1440,29 +1456,72 @@ function showToast(msg, duration = 3000) {
 
 window.receiveDesktopScreenshot = async function (dataUrl) {
     if (!dataUrl?.startsWith('data:')) return showToast("Capture failed");
-    showToast("Analyzing screenshot...", 5000);
+    
+    state.pendingScreenshots.push(dataUrl);
+    
+    const container = document.getElementById('staged-screenshots-container');
+    if (container) {
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.style.height = '60px';
+        img.style.borderRadius = '4px';
+        img.style.border = '1px solid rgba(255,255,255,0.2)';
+        container.appendChild(img);
+    }
+    
+    showToast(`Screenshot staged (${state.pendingScreenshots.length}). Press Mic to analyze.`, 4000);
+};
+
+async function analyzePendingScreenshots(textContext) {
+    if (state.isProcessingAI) return;
+    state.isProcessingAI = true;
+
+    const urls = [...state.pendingScreenshots];
+    state.pendingScreenshots = [];
+    
+    const container = document.getElementById('staged-screenshots-container');
+    if (container) container.innerHTML = '';
+
+    showToast("Analyzing screenshots...");
+
+    const aiCard = document.createElement('div');
+    aiCard.className = 'ai-message vision-card';
+    displays.aiFeed.appendChild(aiCard);
+    scrollToBottom(displays.aiFeed);
+
     try {
-        const messages = [
-            { role: "system", content: "You are an expert technical candidate. Solve the problem in the image step-by-step in Markdown." },
-            { role: "user", content: [{ type: "text", text: "Solve this:" }, { type: "image_url", image_url: { url: dataUrl } }] }
+        const contentArray = [
+            { type: "text", text: textContext ? `Context: ${textContext}\nSolve this:` : "Solve this:" }
         ];
+
+        urls.forEach(url => {
+            contentArray.push({ type: "image_url", image_url: { url: url } });
+        });
+
+        const messages = [
+            { role: "system", content: "You are an expert technical candidate. Analyze the provided screenshots (and any spoken context) to extract and solve the exact problem or question in Markdown." },
+            { role: "user", content: contentArray }
+        ];
+
         const response = await puter.ai.chat(messages, { stream: true, model: 'gpt-4o' });
+        
         let fullResponse = "";
-        const aiCard = document.createElement('div');
-        aiCard.className = 'ai-message vision-card';
-        displays.aiFeed.appendChild(aiCard);
-        displays.aiFeed.scrollTo({ top: aiCard.offsetTop - 20, behavior: 'smooth' });
         for await (const part of response) {
             fullResponse += part?.text || "";
             aiCard.innerHTML = parseMarkdown(fullResponse);
+            scrollToBottom(displays.aiFeed);
         }
+        
         state.aiLog.push(fullResponse);
         state.chatHistory.push({ role: "assistant", content: fullResponse });
         showToast("Solution generated!");
     } catch (err) {
         showToast("Vision Error: " + err.message);
+        aiCard.innerHTML = "<span style='color:red'>Vision Error</span>";
+    } finally {
+        state.isProcessingAI = false;
     }
-};
+}
 
 let currentRating = 0;
 function setupFeedbackListeners() {
