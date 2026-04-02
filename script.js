@@ -677,7 +677,7 @@ function initDeepgram() {
         state.chunkCount = 0;
 
         console.log("Initializing Deepgram...");
-        const url = 'wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&filler_words=true';
+        const url = 'wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&filler_words=true&keepalive=true';
         state.deepgramSocket = new WebSocket(url, ['token', activeKey]);
 
         state.deepgramSocket.onopen = () => {
@@ -748,7 +748,9 @@ function initDeepgram() {
             if (event.code !== 1000 && state.isRecording) {
                 console.log("Attempting re-connection...");
                 setTimeout(() => {
-                    if (state.isRecording) toggleMic();
+                    if (state.isRecording && (!state.deepgramSocket || state.deepgramSocket.readyState !== 1)) {
+                        initDeepgram().catch(e => console.error("Re-connection failed:", e));
+                    }
                 }, 2000);
             }
         };
@@ -1094,40 +1096,47 @@ async function triggerAI(text, type = "SPEECH") {
     }
 }
 
-async function streamAIResponse(element) {
+async function streamAIResponse(element, retries = 2) {
     const systemMessage = {
         role: "system",
         content: `You are an experienced job candidate. Topic: "${state.topic}". Style: HUMAN, SIMPLE INDIAN ENGLISH. Avoid robotic openers. Reconstruction: Deduce actual question from phonetic errors. Format: [QUESTION: ...] followed by answer.`
     };
     const messages = [systemMessage, ...state.chatHistory.slice(-15)];
-    try {
-        const response = await puter.ai.chat(messages, { stream: true, model: 'gpt-4o-mini' });
-        element.innerHTML = "";
-        let finalOutput = "";
-        let hasScrolled = false;
-        for await (const part of response) {
-            const text = part?.text || "";
-            if (text) {
-                finalOutput += text;
-                const qMatch = finalOutput.match(/^\[QUESTION:\s*(.*?)\]/s);
-                if (qMatch) {
-                    const qText = qMatch[1];
-                    const answerText = finalOutput.substring(qMatch[0].length).trim();
-                    element.innerHTML = `<div style="color: #FFD700; font-weight: bold; margin-bottom: 8px;">${parseMarkdown(qText)}</div>${parseMarkdown(answerText)}`;
-                } else {
-                    element.innerHTML = parseMarkdown(finalOutput);
-                }
-                if (!hasScrolled && finalOutput.length > 20) {
-                    displays.aiFeed.scrollTo({ top: element.offsetTop - 20, behavior: 'smooth' });
-                    hasScrolled = true;
+    
+    for (let attempt = 1; attempt <= retries + 1; attempt++) {
+        try {
+            const response = await puter.ai.chat(messages, { stream: true, model: 'gpt-4o-mini' });
+            element.innerHTML = "";
+            let finalOutput = "";
+            let hasScrolled = false;
+            for await (const part of response) {
+                const text = part?.text || "";
+                if (text) {
+                    finalOutput += text;
+                    const qMatch = finalOutput.match(/^\[QUESTION:\s*(.*?)\]/s);
+                    if (qMatch) {
+                        const qText = qMatch[1];
+                        const answerText = finalOutput.substring(qMatch[0].length).trim();
+                        element.innerHTML = `<div style="color: #FFD700; font-weight: bold; margin-bottom: 8px;">${parseMarkdown(qText)}</div>${parseMarkdown(answerText)}`;
+                    } else {
+                        element.innerHTML = parseMarkdown(finalOutput);
+                    }
+                    if (!hasScrolled && finalOutput.length > 20) {
+                        displays.aiFeed.scrollTo({ top: element.offsetTop - 20, behavior: 'smooth' });
+                        hasScrolled = true;
+                    }
                 }
             }
+            return finalOutput;
+        } catch (err) {
+            console.error(`AI Error (Attempt ${attempt}):`, err);
+            if (attempt > retries) {
+                element.innerHTML = "<span style='color:red'>AI Connection Error - Please try again</span>";
+                return null;
+            }
+            await new Promise(res => setTimeout(res, 1000));
+            element.innerHTML = `<span style='color:orange'>Retrying AI connection (${attempt}/${retries})...</span>`;
         }
-        return finalOutput;
-    } catch (err) {
-        console.error("AI Error:", err);
-        element.innerHTML = "<span style='color:red'>AI Error</span>";
-        return null;
     }
 }
 
