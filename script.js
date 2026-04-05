@@ -1855,5 +1855,44 @@ async function fetchPuterUsage() {
     }
 }
 
+function isSelfLoop(userText, lastAiText) {
+    if (!lastAiText || !userText) return false;
+
+    // Normalize: lowercase, remove punctuation, extra whitespace
+    const cleanUser = userText.toLowerCase().replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ").trim();
+    const cleanAI = lastAiText.toLowerCase().replace(/[^\w\s]|_/g, "").replace(/\s+/g, " ").trim();
+
+    // 0. EXACT MATCH (Always ignore)
+    if (cleanUser === cleanAI) return true;
+
+    // 1. SAFEGUARD: Strong Question Words
+    const questionWords = ["why", "how", "what", "when", "where", "who", "which", "can", "could", "would", "explain", "tell", "elaborate"];
+    const firstWord = cleanUser.split(" ")[0];
+    if (questionWords.includes(firstWord)) return false;
+
+    // 2. Length check. 
+    const userWords = cleanUser.split(" ");
+    if (userWords.length < 3) return false;
+
+    // 3. Phrase Reading Detection (Long Substring)
+    if (cleanAI.includes(cleanUser)) {
+        if (cleanUser.length > 20 || cleanUser.length > cleanAI.length * 0.8) {
+            return true;
+        }
+    }
+
+    // 4. Word Overlap (Fuzzy Match)
+    const aiWords = new Set(cleanAI.split(" "));
+    let matchCount = 0;
+    userWords.forEach(w => {
+        if (aiWords.has(w)) matchCount++;
+    });
+
+    const similarity = matchCount / userWords.length;
+    if (similarity > 0.9) return true;
+
+    return false;
+}
+
 window.addEventListener('load', init);
 
