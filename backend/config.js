@@ -293,12 +293,21 @@ function handleRequest(params) {
             const email = params.email ? params.email.trim().toLowerCase() : "";
             const providerEmail = params.providerEmail ? params.providerEmail.trim().toLowerCase() : "";
             const mins = parseFloat(params.minutes) || 0;
+            const reasoningMode = params.reasoningMode || "";
+            const puterUser = params.puterUser || "";
+
+            const reasonColIdx = getOrCreateCol("ReasoningMode");
+            const puterUserColIdx = getOrCreateCol("PuterUsername");
 
             for (let i = 1; i < data.length; i++) {
                 const sheetEmail = data[i][0].toString().toLowerCase();
                 if (sheetEmail === email) {
                     const current = parseFloat(data[i][3]) || 0;
                     sheet.getRange(i + 1, 4).setValue(current + mins);
+                    
+                    // Update metadata if provided
+                    if (reasoningMode) sheet.getRange(i + 1, reasonColIdx + 1).setValue(reasoningMode);
+                    if (puterUser) sheet.getRange(i + 1, puterUserColIdx + 1).setValue(puterUser);
                 }
                 if (providerEmail && sheetEmail === providerEmail) {
                     const pooledColIdx = getColIdx("PooledApiTotalMinUsed");
