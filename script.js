@@ -1925,5 +1925,42 @@ function isSelfLoop(userText, lastAiText) {
     return false;
 }
 
+function parseMarkdown(text) {
+    if (!text) return "";
+
+    // 1. Double encode backticks to handle them inside code blocks (safety)
+    let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    // 2. Handle Multiline Code Blocks: ```language \n code \n ```
+    // This regex looks for blocks and wraps them in a dark div and pre tag
+    html = html.replace(/```(?:[a-zA-Z]*)\n?([\s\S]*?)```/g, (match, code) => {
+        return `<div class="code-box"><pre><code>${code.trim()}</code></pre></div>`;
+    });
+
+    // 3. Handle Inline Code: `code`
+    html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+
+    // 4. Handle Bold: **text**
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+    // 5. Handle Lists (Simple)
+    html = html.replace(/^\s*-\s+(.*)$/gm, '<li>$1</li>');
+    html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+
+    // 6. Handle Newlines: \n -> <br>
+    // But don't double-break inside code boxes (they use <pre>)
+    return html.split(/<div class="code-box">/).map((part, i) => {
+        if (i === 0) return part.replace(/\n/g, '<br>');
+        const subParts = part.split(/<\/div>/);
+        if (subParts.length > 1) {
+            // first part is the code content, don't touch \n there
+            // second part is the rest of the message, apply <br>
+            subParts[1] = subParts[1].replace(/\n/g, '<br>');
+            return subParts.join('</div>');
+        }
+        return part;
+    }).join('<div class="code-box">');
+}
+
 window.addEventListener('load', init);
 
