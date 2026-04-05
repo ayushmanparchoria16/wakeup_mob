@@ -1203,17 +1203,47 @@ async function streamAIResponse(element, retries = 2) {
 }
 
 function updateAIBubble(element, finalOutput, hasScrolled) {
-    const qMatch = finalOutput.match(/^\[QUESTION:\s*(.*?)\]/s);
+    // Robust Regex: Handle leading whitespace/newlines that some models prefix
+    const qMatch = finalOutput.match(/\[QUESTION:\s*(.*?)\]/s);
+    let htmlContent = "";
+
     if (qMatch) {
+        // Separate thinking tag from answer
         const qText = qMatch[1];
-        const answerText = finalOutput.substring(qMatch[0].length).trim();
-        element.innerHTML = `<div style="color: #FFD700; font-weight: bold; margin-bottom: 8px;">${parseMarkdown(qText)}</div>${parseMarkdown(answerText)}`;
+        const answerText = finalOutput.substring(finalOutput.indexOf(qMatch[0]) + qMatch[0].length).trim();
+
+        const qHtml = `<div style="color: #FFD700; font-weight: bold; margin-bottom: 8px; font-size: 0.95em;">${parseMarkdown(qText)}</div>`;
+        const aHtml = parseMarkdown(answerText);
+        htmlContent = qHtml + aHtml;
+
+        // Smart Scroll: Snap to top of answer ONCE it's substantially started
+        if (!hasScrolled && answerText.length > 5) {
+            const container = displays.aiFeed;
+            const elTop = element.offsetTop;
+            container.scrollTo({ top: elTop - 20, behavior: 'smooth' });
+            hasScrolled = true;
+        }
     } else {
-        element.innerHTML = parseMarkdown(finalOutput);
+        // Tag not complete or not present yet.
+        // Show "Thinking..." while the tag is still being formed to prevent raw tag flicker
+        if (finalOutput.trim().startsWith("[") && finalOutput.length < 60) {
+            element.innerHTML = "<em>Thinking...</em>";
+            return;
+        }
+
+        // Fallback or while tag is being typed
+        htmlContent = parseMarkdown(finalOutput);
+
+        // Standard Scroll Fallback
+        if (!hasScrolled && finalOutput.length > 20) {
+            const container = displays.aiFeed;
+            const elTop = element.offsetTop;
+            container.scrollTo({ top: elTop - 20, behavior: 'smooth' });
+            hasScrolled = true;
+        }
     }
-    if (!hasScrolled && finalOutput.length > 20) {
-        displays.aiFeed.scrollTo({ top: element.offsetTop - 20, behavior: 'smooth' });
-    }
+
+    element.innerHTML = htmlContent;
 }
 
 async function quickReply() {
