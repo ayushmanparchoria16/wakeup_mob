@@ -552,9 +552,8 @@ input:focus {
     border-radius: 0 16px 16px 16px;
     padding: 16px;
     margin-bottom: 16px;
-    font-size: 0.85rem;
-    /* Little small */
-    line-height: 1.5;
+    font-size: 0.95rem; /* Improved basic readability */
+    line-height: 1.6;
     position: relative;
     animation: slideRight 0.4s ease;
 }
@@ -599,22 +598,27 @@ input:focus {
     font-weight: 600;
 }
 
-.ai-message .code-box,
-.ai-message pre {
-    background: #0f0518;
-    /* Solid dark purple/black terminal background */
-    border: 1px solid #7c3aed;
-    /* Distinct purple border */
-    padding: 14px;
-    border-radius: 6px;
+.ai-message .code-box {
+    background: #0d021c; /* Deeper purple terminal background */
+    border: 1px solid #7c3aed; /* Purple border */
+    padding: 18px;
+    border-radius: 8px;
     font-family: 'Consolas', 'Monaco', monospace;
-    font-size: 0.85em;
-    /* Little small */
-    margin: 12px 0;
+    font-size: 1.1rem; /* Much bigger code font */
+    margin: 16px 0;
     overflow-x: auto;
     color: #ffffff;
-    white-space: pre-wrap;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.5);
+}
+
+.ai-message pre {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    white-space: pre !important; 
+    font-size: inherit;
+    color: inherit;
 }
 
 .ai-message .command-label {
@@ -1019,11 +1023,9 @@ input:focus {
     letter-spacing: 0.5px;
 }
 
-
 .lemonsqueezy-button {
     text-decoration: none;
     display: flex;
     align-items: center;
     justify-content: center;
 }
-

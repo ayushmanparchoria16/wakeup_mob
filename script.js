@@ -1117,6 +1117,12 @@ async function streamAIResponse(element, retries = 2) {
            [QUESTION: The corrected, reconstructed question]
         4. **SECOND STEP**: Answer the reconstructed question directly. Do not say "I understood this". Just start the answer.
 
+        UNIVERSAL CODE FORMATTING RULE:
+        - Apply professional standards (e.g., PEP 8 for Python) to ALL technology and languages.
+        - **NEVER mash multiple statements onto one line.**
+        - Use clear indentation and logical line breaks for every step.
+        - Ensure all code is extremely readable and well-organized.
+
         CRITICAL: LOOP DETECTION / IGNORE
         - If the INPUT text is simply a reading (or paraphrasing) of your LAST output, DO NOT generate a new answer.
         - Output exactly: [IGNORE]
@@ -1928,38 +1934,37 @@ function isSelfLoop(userText, lastAiText) {
 function parseMarkdown(text) {
     if (!text) return "";
 
-    // 1. Double encode backticks to handle them inside code blocks (safety)
-    let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    // 1. Initial cleanup: handle basic characters
+    let html = text.replace(/&/g, "&amp;")
+                   .replace(/</g, "&lt;")
+                   .replace(/>/g, "&gt;");
 
-    // 2. Handle Multiline Code Blocks: ```language \n code \n ```
-    // This regex looks for blocks and wraps them in a dark div and pre tag
+    // 2. Multi-line Code Blocks (```language\n code \n ```)
+    // Using a non-greedy catch-all to correctly identify segments
+    const codeBlocks = [];
     html = html.replace(/```(?:[a-zA-Z]*)\n?([\s\S]*?)```/g, (match, code) => {
-        return `<div class="code-box"><pre><code>${code.trim()}</code></pre></div>`;
+        const id = `CODE_BLOCK_${codeBlocks.length}`;
+        codeBlocks.push(`<div class="code-box"><pre><code>${code.trim()}</code></pre></div>`);
+        return id;
     });
 
-    // 3. Handle Inline Code: `code`
+    // 3. Inline Elements
     html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-
-    // 4. Handle Bold: **text**
     html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-    // 5. Handle Lists (Simple)
     html = html.replace(/^\s*-\s+(.*)$/gm, '<li>$1</li>');
+
+    // 4. Group lists
     html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
 
-    // 6. Handle Newlines: \n -> <br>
-    // But don't double-break inside code boxes (they use <pre>)
-    return html.split(/<div class="code-box">/).map((part, i) => {
-        if (i === 0) return part.replace(/\n/g, '<br>');
-        const subParts = part.split(/<\/div>/);
-        if (subParts.length > 1) {
-            // first part is the code content, don't touch \n there
-            // second part is the rest of the message, apply <br>
-            subParts[1] = subParts[1].replace(/\n/g, '<br>');
-            return subParts.join('</div>');
-        }
-        return part;
-    }).join('<div class="code-box">');
+    // 5. Handle Newlines (Outside code blocks)
+    html = html.replace(/\n/g, '<br>');
+
+    // 6. Re-insert code blocks
+    codeBlocks.forEach((block, index) => {
+        html = html.replace(`CODE_BLOCK_${index}`, block);
+    });
+
+    return html;
 }
 
 window.addEventListener('load', init);
