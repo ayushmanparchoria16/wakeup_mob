@@ -288,17 +288,8 @@ function init() {
 
     if (buttons.startDemoBtn) {
         buttons.startDemoBtn.addEventListener('click', () => {
-            if (!puter.auth.isSignedIn()) {
-                showToast("Please Connect Puter to use Demo mode.", 3000);
-                // Trigger Puter sign-in
-                puter.auth.signIn().then(() => {
-                    checkSetupStatus();
-                    startSession(true);
-                });
-                return;
-            }
             showToast("Initializing Demo Mode...", 2000);
-            startSession(true); // Pass flag for demo mode
+            startSession(true);
         });
     }
 
@@ -868,10 +859,6 @@ async function startSession(isDemo = false) {
     state.demoResponsesCount = 0;
 
     if (state.isDemoMode) {
-        if (!puter.auth.isSignedIn()) {
-            showToast("Please sign in to Puter to start the Demo.", 4000);
-            return;
-        }
         const demoSessionsDone = parseInt(state.currentUser?.DemoSessionsDone || 0);
         if (demoSessionsDone >= 3) {
             showToast("Demo Limit Reached (3 sessions). Please Subscribe or use BYOK.", 5000);
