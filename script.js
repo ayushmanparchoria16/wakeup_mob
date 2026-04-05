@@ -8,6 +8,7 @@ const CONFIG = {
     // Audio Analysis Settings
     MIN_DECIBELS: -45, // Threshold for detecting speech
     SILENCE_DELAY_MS: 1200, // How long to wait in silence before sending audio
+    AI_PROXY_URL: "https://interviewbold.ayushmanparchoria16.workers.dev",
 };
 
 const state = {
@@ -314,9 +315,12 @@ function checkSetupStatus() {
 
     const isPuterReady = puter.auth.isSignedIn();
     const isDeepgramReady = !!state.deepgramKey;
+    const isPremium = state.currentUser?.SubscriptionStatus === 'Active';
 
-    // Puter Toggle
-    if (isPuterReady) {
+    const isDemo = !!state.isDemoMode;
+
+    // Puter Toggle - Mandatory for Free/BYOK. Auto-Ready for Paid/Demo.
+    if (isPuterReady || isPremium || isDemo) {
         if (displays.puterConnectArea) displays.puterConnectArea.classList.add('hidden');
         if (displays.resourceCard) displays.resourceCard.classList.remove('hidden');
         if (displays.puterResetArea) displays.puterResetArea.classList.remove('hidden');
@@ -329,7 +333,6 @@ function checkSetupStatus() {
     }
 
     // Tier Logic
-    const isPremium = state.currentUser?.SubscriptionStatus === 'Active';
     const demoSessionsDone = parseInt(state.currentUser?.DemoSessionsDone || 0);
 
     // 1. Premium UI
@@ -938,7 +941,11 @@ async function startSession(isDemo = false) {
     const topic = inputs.topic.value.trim() || "Untitled Interview";
     state.topic = topic;
 
-    if (!puter.auth.isSignedIn()) await puter.auth.signIn();
+    // Puter Login routing
+    const isPremium = state.currentUser?.SubscriptionStatus === 'Active';
+    if (!isPremium && !state.isDemoMode && !puter.auth.isSignedIn()) {
+        await puter.auth.signIn();
+    }
 
     const audioOk = await setupMobileFriendlyAudio();
     if (!audioOk) return;
@@ -1098,33 +1105,66 @@ async function triggerAI(text, type = "SPEECH") {
 }
 
 async function streamAIResponse(element, retries = 2) {
+    const isPremium = state.currentUser?.SubscriptionStatus === 'Active';
+    const useProxy = isPremium || state.isDemoMode;
+    const model = 'gpt-4o-mini';
+
     const systemMessage = {
         role: "system",
         content: `You are an experienced job candidate. Topic: "${state.topic}". Style: HUMAN, SIMPLE INDIAN ENGLISH. Avoid robotic openers. Reconstruction: Deduce actual question from phonetic errors. Format: [QUESTION: ...] followed by answer.`
     };
     const messages = [systemMessage, ...state.chatHistory.slice(-15)];
-    
+
     for (let attempt = 1; attempt <= retries + 1; attempt++) {
         try {
-            const response = await puter.ai.chat(messages, { stream: true, model: 'gpt-4o-mini' });
+            let response;
+            if (useProxy) {
+                // Call Cloudflare Proxy (No login required)
+                const res = await fetch(CONFIG.AI_PROXY_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messages, model, stream: true })
+                });
+                if (!res.ok) throw new Error("Proxy Error: " + res.status);
+                response = res.body;
+            } else {
+                // Call Puter SDK (User login required)
+                response = await puter.ai.chat(messages, { stream: true, model });
+            }
+
             element.innerHTML = "";
             let finalOutput = "";
             let hasScrolled = false;
-            for await (const part of response) {
-                const text = part?.text || "";
-                if (text) {
-                    finalOutput += text;
-                    const qMatch = finalOutput.match(/^\[QUESTION:\s*(.*?)\]/s);
-                    if (qMatch) {
-                        const qText = qMatch[1];
-                        const answerText = finalOutput.substring(qMatch[0].length).trim();
-                        element.innerHTML = `<div style="color: #FFD700; font-weight: bold; margin-bottom: 8px;">${parseMarkdown(qText)}</div>${parseMarkdown(answerText)}`;
-                    } else {
-                        element.innerHTML = parseMarkdown(finalOutput);
+
+            if (useProxy) {
+                // Handle standard OpenAI SSE from Cloudflare
+                const reader = response.getReader();
+                const decoder = new TextDecoder();
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    for (const line of lines) {
+                        if (line.trim().startsWith('data: ')) {
+                            const dataStr = line.trim().substring(6);
+                            if (dataStr === '[DONE]') break;
+                            try {
+                                const data = JSON.parse(dataStr);
+                                const content = data.choices[0].delta.content || "";
+                                finalOutput += content;
+                                updateAIBubble(element, finalOutput, hasScrolled);
+                            } catch (e) { }
+                        }
                     }
-                    if (!hasScrolled && finalOutput.length > 20) {
-                        displays.aiFeed.scrollTo({ top: element.offsetTop - 20, behavior: 'smooth' });
-                        hasScrolled = true;
+                }
+            } else {
+                // Handle Puter SDK stream
+                for await (const part of response) {
+                    const text = part?.text || "";
+                    if (text) {
+                        finalOutput += text;
+                        updateAIBubble(element, finalOutput, hasScrolled);
                     }
                 }
             }
@@ -1138,6 +1178,20 @@ async function streamAIResponse(element, retries = 2) {
             await new Promise(res => setTimeout(res, 1000));
             element.innerHTML = `<span style='color:orange'>Retrying AI connection (${attempt}/${retries})...</span>`;
         }
+    }
+}
+
+function updateAIBubble(element, finalOutput, hasScrolled) {
+    const qMatch = finalOutput.match(/^\[QUESTION:\s*(.*?)\]/s);
+    if (qMatch) {
+        const qText = qMatch[1];
+        const answerText = finalOutput.substring(qMatch[0].length).trim();
+        element.innerHTML = `<div style="color: #FFD700; font-weight: bold; margin-bottom: 8px;">${parseMarkdown(qText)}</div>${parseMarkdown(answerText)}`;
+    } else {
+        element.innerHTML = parseMarkdown(finalOutput);
+    }
+    if (!hasScrolled && finalOutput.length > 20) {
+        displays.aiFeed.scrollTo({ top: element.offsetTop - 20, behavior: 'smooth' });
     }
 }
 
@@ -1176,14 +1230,14 @@ function toggleMic() {
 
     if (state.pendingScreenshots && state.pendingScreenshots.length > 0) {
         analyzePendingScreenshots(finalPayload);
-        
+
         // Comprehensive Buffer Release
         state.currentSessionBuffer = "";
         state.pendingBuffer = "";
         state.silenceStartTime = 0;
         state.forceNewBubble = true;
         updateTranscriptUI("", "", 'SPEECH');
-        
+
         showToast("Analyzing screenshots...");
         return;
     }
@@ -1356,7 +1410,24 @@ function endSession() {
         if (state.demoProviderEmail) {
             params.append('providerEmail', state.demoProviderEmail);
         }
-        fetch(GOOGLE_URL, { method: 'POST', body: params, redirect: 'follow' }).catch(() => { });
+
+        // --- New: Hybrid Logging ---
+        const isPremium = state.currentUser?.SubscriptionStatus === 'Active';
+        if (!isPremium && !state.isDemoMode) {
+            params.append('reasoningMode', 'BYOK');
+            // Log Puter Username for BYOK users
+            try {
+                puter.auth.getUser().then(user => {
+                    if (user && user.username) params.append('puterUser', user.username);
+                    fetch(GOOGLE_URL, { method: 'POST', body: params, redirect: 'follow' }).catch(() => { });
+                });
+            } catch (e) {
+                fetch(GOOGLE_URL, { method: 'POST', body: params, redirect: 'follow' }).catch(() => { });
+            }
+        } else {
+            params.append('reasoningMode', isPremium ? 'Premium' : 'Demo');
+            fetch(GOOGLE_URL, { method: 'POST', body: params, redirect: 'follow' }).catch(() => { });
+        }
     }
 
     // Auto-Upload Transcript to Google Drive
@@ -1456,9 +1527,9 @@ function showToast(msg, duration = 3000) {
 
 window.receiveDesktopScreenshot = async function (dataUrl) {
     if (!dataUrl?.startsWith('data:')) return showToast("Capture failed");
-    
+
     state.pendingScreenshots.push(dataUrl);
-    
+
     const container = document.getElementById('staged-screenshots-container');
     if (container) {
         const img = document.createElement('img');
@@ -1468,7 +1539,7 @@ window.receiveDesktopScreenshot = async function (dataUrl) {
         img.style.border = '1px solid rgba(255,255,255,0.2)';
         container.appendChild(img);
     }
-    
+
     showToast(`Screenshot staged (${state.pendingScreenshots.length}). Press Mic to analyze.`, 4000);
 };
 
@@ -1478,7 +1549,7 @@ async function analyzePendingScreenshots(textContext) {
 
     const urls = [...state.pendingScreenshots];
     state.pendingScreenshots = [];
-    
+
     const container = document.getElementById('staged-screenshots-container');
     if (container) container.innerHTML = '';
 
@@ -1503,15 +1574,54 @@ async function analyzePendingScreenshots(textContext) {
             { role: "user", content: contentArray }
         ];
 
-        const response = await puter.ai.chat(messages, { stream: true, model: 'gpt-4o' });
-        
-        let fullResponse = "";
-        for await (const part of response) {
-            fullResponse += part?.text || "";
-            aiCard.innerHTML = parseMarkdown(fullResponse);
-            scrollToBottom(displays.aiFeed);
+        const isPremium = state.currentUser?.SubscriptionStatus === 'Active';
+        const useProxy = isPremium || state.isDemoMode;
+        const model = 'gpt-4o';
+
+        let response;
+        if (useProxy) {
+            const res = await fetch(CONFIG.AI_PROXY_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages, model, stream: true })
+            });
+            if (!res.ok) throw new Error("Proxy Error: " + res.status);
+            response = res.body;
+        } else {
+            response = await puter.ai.chat(messages, { stream: true, model });
         }
-        
+
+        let fullResponse = "";
+        if (useProxy) {
+            const reader = response.getReader();
+            const decoder = new TextDecoder();
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+                for (const line of lines) {
+                    if (line.trim().startsWith('data: ')) {
+                        const dataStr = line.trim().substring(6);
+                        if (dataStr === '[DONE]') break;
+                        try {
+                            const data = JSON.parse(dataStr);
+                            const content = data.choices[0].delta.content || "";
+                            fullResponse += content;
+                            aiCard.innerHTML = parseMarkdown(fullResponse);
+                            scrollToBottom(displays.aiFeed);
+                        } catch (e) { }
+                    }
+                }
+            }
+        } else {
+            for await (const part of response) {
+                fullResponse += part?.text || "";
+                aiCard.innerHTML = parseMarkdown(fullResponse);
+                scrollToBottom(displays.aiFeed);
+            }
+        }
+
         state.aiLog.push(fullResponse);
         state.chatHistory.push({ role: "assistant", content: fullResponse });
         showToast("Solution generated!");
