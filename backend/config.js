@@ -411,8 +411,8 @@ function handleRequest(params) {
                     sheet.getRange(i + 1, 2).setValue(tempPassword);
 
                     // Send the email
-                    const subject = "Wakeup AI - Password Reset";
-                    const body = `Hello ${displayName},\n\nYour password has been reset.\n\nYour new temporary password is: ${tempPassword}\n\nPlease login using this temporary password.\n\nBest,\nWakeup AI Team`;
+                    const subject = "Interviewbold - Password Reset";
+                    const body = `Hello ${displayName},\n\nYour password has been reset.\n\nYour new temporary password is: ${tempPassword}\n\nPlease login using this temporary password.\n\nBest,\nInterviewbold Team`;
 
                     MailApp.sendEmail(email, subject, body);
 

@@ -1,5 +1,5 @@
 /**
- * Wakeup AI - Logic Script
+ * Interviewbold - Logic Script
  * Handles Speech Recognition, Puter.js AI Streaming, and UI State
  */
 
@@ -130,7 +130,7 @@ const displays = {
 
 function init() {
     // Check local storage for user
-    const savedUser = localStorage.getItem('wakeup_user');
+    const savedUser = localStorage.getItem('interviewbold_user');
     if (savedUser) {
         try {
             state.currentUser = JSON.parse(savedUser);
@@ -146,7 +146,7 @@ function init() {
                 .then(data => {
                     if (data.status === 'success' && data.user) {
                         state.currentUser = data.user;
-                        localStorage.setItem('wakeup_user', JSON.stringify(data.user));
+                        localStorage.setItem('interviewbold_user', JSON.stringify(data.user));
                         checkSetupStatus(); // refresh UI based on latest tier
                     }
                 }).catch(e => console.error("Silent user refresh failed", e));
@@ -226,13 +226,13 @@ function init() {
             }
 
             // Aggressively clear local and session storage
-            const savedUser = localStorage.getItem('wakeup_user');
+            const savedUser = localStorage.getItem('interviewbold_user');
             const savedDeepgram = localStorage.getItem('deepgram_api_key');
             localStorage.clear();
             sessionStorage.clear();
 
             // Restore our user and key
-            if (savedUser) localStorage.setItem('wakeup_user', savedUser);
+            if (savedUser) localStorage.setItem('interviewbold_user', savedUser);
             if (savedDeepgram) localStorage.setItem('deepgram_api_key', savedDeepgram);
 
             // Clear all cookies
@@ -482,7 +482,7 @@ async function handleLogin() {
 
         if (data.status === 'success') {
             state.currentUser = data.user;
-            localStorage.setItem('wakeup_user', JSON.stringify(data.user));
+            localStorage.setItem('interviewbold_user', JSON.stringify(data.user));
             displays.userName.textContent = data.user.displayName;
             switchScreen('setup');
             checkSetupStatus();
@@ -607,7 +607,7 @@ async function handleLogout() {
     }
 
     state.currentUser = null;
-    localStorage.removeItem('wakeup_user');
+    localStorage.removeItem('interviewbold_user');
     inputs.topic.value = '';
     switchScreen('auth');
     stopUsageRefresh();
@@ -1327,7 +1327,7 @@ function endSession() {
         state.demoProviderEmail = "";
         if (state.currentUser) {
             state.currentUser.DemoSessionsDone = (parseInt(state.currentUser.DemoSessionsDone) || 0) + 1;
-            localStorage.setItem('wakeup_user', JSON.stringify(state.currentUser));
+            localStorage.setItem('interviewbold_user', JSON.stringify(state.currentUser));
         }
         if (inputs.deepgramKey) {
             inputs.deepgramKey.placeholder = "Paste Key Here";
