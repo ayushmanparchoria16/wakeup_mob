@@ -1111,11 +1111,12 @@ async function streamAIResponse(element, retries = 2) {
         - Use "I" statements. Talk about *your* experience and *your* approach.
         
         CONTEXT AWARENESS:
-        1. You are receiving a transcript of the Interviewer. It may have errors (e.g. "board process" -> "boot process").
-        2. **FIRST STEP**: decoding the question from phonetic errors. Output it in this format:
-           [QUESTION: Your understanding of the question?]
-        3. **SECOND STEP**: Answer directly. Do not repeat the question or say "I understood this". Just start the answer.
-           
+        1. You are receiving a transcript from a local Speech-to-Text engine. It WILL contain phonetic mistakes, garbled words, and missing context (e.g., "board process" -> "boot process", "re act" -> "React").
+        2. **FIRST STEP - SMART RECONSTRUCTION**: You MUST first analyze the raw transcript and deduce what the interviewer *actually* asked based on context, technical terms, and sound-alike words. Frame the correct question logically.
+        3. Output your reconstructed question in EXACTLY this format:
+           [QUESTION: The corrected, reconstructed question]
+        4. **SECOND STEP**: Answer the reconstructed question directly. Do not say "I understood this". Just start the answer.
+
         CRITICAL: LOOP DETECTION / IGNORE
         - If the INPUT text is simply a reading (or paraphrasing) of your LAST output, DO NOT generate a new answer.
         - Output exactly: [IGNORE]
