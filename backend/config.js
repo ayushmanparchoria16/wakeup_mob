@@ -61,6 +61,29 @@ function handleRequest(params) {
                 return createJsonResponse({ status: 'error', message: 'Deepgram Auth Failed' });
             }
 
+            // --- NEW: Premium Active Check ---
+            const email = params.userEmail ? params.userEmail.trim().toLowerCase() : "";
+            if (email) {
+                const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Users");
+                const uData = sheet.getDataRange().getValues();
+                const subStatusCol = getColIdx(sheet, "SubscriptionStatus");
+                const subExpiryCol = getColIdx(sheet, "SubscriptionExpiry");
+                
+                for (let i = 1; i < uData.length; i++) {
+                    if (uData[i][0].toString().toLowerCase() === email) {
+                        let status = uData[i][subStatusCol] || "Free";
+                        let expiry = uData[i][subExpiryCol] || "";
+                        // Verify and Auto-Expire
+                        const updatedStatus = checkAndExpireSubscription(sheet, i + 1, subStatusCol, subExpiryCol, status, expiry);
+                        if (updatedStatus !== "Active") {
+                            return createJsonResponse({ status: 'error', message: 'Premium subscription has expired. Please upgrade to continue.' });
+                        }
+                        break;
+                    }
+                }
+            }
+
+
             const projectsData = JSON.parse(projectsRes.getContentText());
             if (!projectsData.projects || projectsData.projects.length === 0) {
                 return createJsonResponse({ status: 'error', message: 'No projects found' });
@@ -136,6 +159,27 @@ function handleRequest(params) {
             }
             return idx;
         }
+
+        /**
+         * Helper to check if a user with 'Active' status has an expired 'SubscriptionExpiry' date.
+         * If expired, updates the status back to 'Free' in the sheet.
+         */
+        function checkAndExpireSubscription(sheet, rowIdx, subStatusCol, subExpiryCol, currentStatus, expiryDateStr) {
+            if (currentStatus === "Active" && expiryDateStr && subStatusCol > -1) {
+                try {
+                    const expiryDate = new Date(expiryDateStr);
+                    const now = new Date();
+                    if (!isNaN(expiryDate.getTime()) && expiryDate < now) {
+                        sheet.getRange(rowIdx, subStatusCol + 1).setValue("Free");
+                        return "Free";
+                    }
+                } catch (e) {
+                    Logger.log("Error checking expiry date: " + e.message);
+                }
+            }
+            return currentStatus;
+        }
+
 
         // --- PADDLE WEBHOOK HANDLER ---
         if (action === 'paddleWebhook') {
@@ -270,6 +314,10 @@ function handleRequest(params) {
                     if (subExpiryCol > -1) {
                         subExpiry = data[i][subExpiryCol] || "";
                     }
+
+                    // CHECK AND AUTO-EXPIRE SUBSCRIPTION
+                    subStatus = checkAndExpireSubscription(sheet, i + 1, subStatusCol, subExpiryCol, subStatus, subExpiry);
+
                     let demoSessionsDone = 0;
                     if (demoCountCol > -1) {
                         demoSessionsDone = parseFloat(data[i][demoCountCol]) || 0;
@@ -305,6 +353,10 @@ function handleRequest(params) {
                     if (subExpiryCol > -1) {
                         subExpiry = data[i][subExpiryCol] || "";
                     }
+
+                    // CHECK AND AUTO-EXPIRE SUBSCRIPTION
+                    subStatus = checkAndExpireSubscription(sheet, i + 1, subStatusCol, subExpiryCol, subStatus, subExpiry);
+
                     let demoSessionsDone = 0;
                     if (demoCountCol > -1) {
                         demoSessionsDone = parseFloat(data[i][demoCountCol]) || 0;
@@ -343,6 +395,15 @@ function handleRequest(params) {
                     const current = parseFloat(data[i][3]) || 0;
                     sheet.getRange(i + 1, 4).setValue(current + mins);
                     
+                    // NEW: Continuous Subscription Validation
+                    let currentStatus = "Free";
+                    let expiryStr = "";
+                    if (subStatusCol > -1) currentStatus = data[i][subStatusCol] || "Free";
+                    if (subExpiryCol > -1) expiryStr = data[i][subExpiryCol] || "";
+                    
+                    const updatedStatus = checkAndExpireSubscription(sheet, i + 1, subStatusCol, subExpiryCol, currentStatus, expiryStr);
+                    response.SubscriptionStatus = updatedStatus;
+
                     // Update metadata if provided
                     if (reasoningMode) sheet.getRange(i + 1, reasonColIdx + 1).setValue(reasoningMode);
                     if (puterUser) sheet.getRange(i + 1, puterUserColIdx + 1).setValue(puterUser);
@@ -553,6 +614,84 @@ function handleRequest(params) {
             response.message = 'Feedback saved.';
         }
 
+        // --- ACTION: SUBMIT MANUAL PAYMENT (UPI) ---
+        else if (action === 'submitManualPayment') {
+            const email = params.email ? params.email.trim().toLowerCase() : "";
+            const utr = params.utr || "N/A";
+            const upiId = params.upiId || "N/A";
+
+            if (!email || utr === "N/A") {
+                return createJsonResponse({ status: 'error', message: 'Email and UTR Number are required.' });
+            }
+
+            const subExpiryCol = getOrCreateCol(sheet, "SubscriptionExpiry");
+            let userFound = false;
+            let userRow = -1;
+
+            for (let i = 1; i < data.length; i++) {
+                if (data[i][0].toString().toLowerCase() === email) {
+                    userFound = true;
+                    userRow = i + 1;
+                    
+                    // Immediately update expiry date for 31 days but keep status Free (manual activation later)
+                    const expiryDate = new Date();
+                    expiryDate.setDate(expiryDate.getDate() + 31);
+                    sheet.getRange(userRow, subExpiryCol + 1).setValue(expiryDate.toISOString());
+                    break;
+                }
+            }
+
+            if (!userFound) {
+                return createJsonResponse({ status: 'error', message: 'User not found in database.' });
+            }
+
+            // 1. Log to ManualPayments sheet
+            let manualSheet = ss.getSheetByName("ManualPayments");
+            if (!manualSheet) {
+                manualSheet = ss.insertSheet("ManualPayments");
+                manualSheet.appendRow(["Email", "UTR", "UPI_ID", "ExpirySet", "Timestamp", "AdminNote"]);
+                manualSheet.getRange("A1:F1").setFontWeight("bold").setBackground("#f3f3f3");
+            }
+            
+            const timestamp = new Date().toISOString();
+            manualSheet.appendRow([email, utr, upiId, "31 Days", timestamp, "Pending Verification"]);
+
+            // 2. Send Email to USER
+            try {
+                const userSubject = "Payment Received - Verification in Progress for Interviewbold";
+                const userBody = "Hello,\n\n" +
+                                "Thank you for your payment! We have received your manual UPI payment details (UTR: " + utr + ").\n\n" +
+                                "Our team is currently verifying the transaction. Your account will be upgraded to Premium status within the next hour.\n\n" +
+                                "Once activated, you will have full access to all AI features and pooled resources.\n\n" +
+                                "Thank you for your patience!\n\n" +
+                                "Best regards,\nThe Interviewbold Team";
+                
+                MailApp.sendEmail(email, userSubject, userBody);
+            } catch (e) {
+                Logger.log("Failed to send email to user: " + e.message);
+            }
+
+            // 3. Send Email to ADMIN
+            try {
+                const adminSubject = "Action Required: New Manual UPI Payment for Interviewbold";
+                const sheetUrl = ss.getUrl();
+                const adminBody = "New Manual Payment Submitted!\n\n" +
+                                "User: " + email + "\n" +
+                                "UPI ID: " + upiId + "\n" +
+                                "UTR/Transaction ID: " + utr + "\n" +
+                                "Spreadsheet Link: " + sheetUrl + "\n\n" +
+                                "Please verify the transaction in your bank/UPI app and update the status in the 'Users' sheet to 'Active' to enable the user's features.\n\n" +
+                                "System Note: Subscription Expiry has already been set to 31 days from now.";
+                
+                MailApp.sendEmail("interviewbold@gmail.com", adminSubject, adminBody);
+            } catch (e) {
+                Logger.log("Failed to send email to admin: " + e.message);
+            }
+
+            response.status = 'success';
+            response.message = 'Payment submitted. We will verify and upgrade your account within 1 hour.';
+        }
+
         // --- ACTION: SAVE DEEPGRAM KEY (Silent) ---
         else if (action === 'saveDeepgramKey') {
             const email = params.email ? params.email.trim().toLowerCase() : "";
@@ -562,7 +701,7 @@ function handleRequest(params) {
                 return createJsonResponse({ status: 'error', message: 'Email and Key are required.' });
             }
 
-            const keyColIdx = getOrCreateCol("DeepgramKey");
+            const keyColIdx = getOrCreateCol(sheet, "DeepgramKey");
 
             let found = false;
             for (let i = 1; i < data.length; i++) {

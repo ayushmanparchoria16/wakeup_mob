@@ -1023,9 +1023,130 @@ input:focus {
     letter-spacing: 0.5px;
 }
 
-.lemonsqueezy-button {
-    text-decoration: none;
+/* Onboarding Cards Grid - Responsive */
+@media (min-width: 800px) {
+    .onboarding-cards-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* UPI Payment Modal & Cards */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(10px);
+    z-index: 2000;
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 20px;
+    opacity: 1;
+    transition: opacity 0.3s ease;
+}
+
+.modal-overlay.hidden {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    display: none !important;
+}
+
+.upi-modal-card {
+    max-width: 700px;
+    width: 100%;
+    padding: 30px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    border-radius: 20px;
+    background: rgba(15, 23, 42, 0.95);
+    position: relative;
+    animation: fadeIn 0.3s ease;
+}
+
+.upi-content-grid {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 30px;
+    margin-top: 10px;
+}
+
+.upi-qr-area {
+    text-align: center;
+    padding-right: 30px;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.upi-qr-img {
+    width: 180px;
+    height: 180px;
+    background: white;
+    padding: 10px;
+    border-radius: 12px;
+    margin-bottom: 15px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.upi-id-text {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+.upi-id-text span {
+    display: block;
+    color: var(--primary);
+    font-weight: 600;
+    margin-top: 4px;
+    word-break: break-all;
+    font-size: 0.9rem;
+}
+
+.upi-instruction {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 10px;
+    opacity: 0.7;
+}
+
+.upi-notice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0, 140, 255, 0.1);
+    color: #4da6ff;
+    padding: 14px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    margin-top: 20px;
+    border: 1px solid rgba(0, 140, 255, 0.2);
+    line-height: 1.4;
+}
+
+.upi-notice .material-icons-round {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 650px) {
+    .upi-content-grid {
+        grid-template-columns: 1fr;
+    }
+    .upi-qr-area {
+        border-right: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding-right: 0;
+        padding-bottom: 20px;
+    }
+    .upi-modal-card {
+        padding: 20px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
 }

@@ -130,14 +130,23 @@
                     
                     <div class="onboarding-cards-grid">
                         
-                        <!-- Card 1: Premium via Lemon Squeezy -->
+                        <!-- Card 1: Premium via Paddle -->
                         <div class="onboarding-card premium-card">
-                            <div class="card-badge">RECOMMENDED</div>
-                            <h3>Premium Copilot</h3>
-                            <p>Hassle-free AI. Instant access, no setup required. Use code <strong>LAUNCH80</strong> for 80% off.</p>
-                            <!-- Paddle Button -->
+                            <div class="card-badge">AUTO-ACTIVATE</div>
+                            <h3>International Pro</h3>
+                            <p>Instant access via Card/GPay. Use code <strong>LAUNCH80</strong> for 80% off.</p>
                             <button onclick="openPaddleCheckout()" class="primary-btn" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.9rem;">
-                                Subscribe for Premium
+                                Pay $0.99
+                            </button>
+                        </div>
+
+                        <!-- Card 1.5: Manual UPI (India) -->
+                        <div class="onboarding-card upi-card">
+                            <div class="card-badge" style="background: #008cff;">POPULAR IN INDIA</div>
+                            <h3>Direct UPI Pay</h3>
+                            <p>Pay ₹85 via UPI. Get access in 1 hour.</p>
+                            <button id="show-upi-form-btn" class="secondary-btn" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.9rem; border-color: #008cff; color: #008cff;">
+                                View UPI Details
                             </button>
                         </div>
                         
@@ -342,6 +351,49 @@
             </div>
         </div>
     </section>
+
+    <!-- NEW: UPI Payment Modal -->
+    <div id="upi-modal" class="modal-overlay hidden">
+        <div class="glass-card upi-modal-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0; font-size: 1.25rem;">Manual UPI Payment</h2>
+                <button id="close-upi-modal" class="icon-btn-lite" style="background:none; border:none; color:var(--text-muted); cursor:pointer;"><span class="material-icons-round">close</span></button>
+            </div>
+            
+            <div class="upi-content-grid">
+                <div class="upi-qr-area">
+                    <img src="assets/upi_qr.png" alt="UPI QR Code" class="upi-qr-img">
+                    <p class="upi-id-text">UPI ID: <span>ayushmanparchoria16@oksbi</span></p>
+                    <p class="upi-instruction">Scan with GPay, PhonePe, or Paytm</p>
+                </div>
+
+                <div class="upi-form-area">
+                    <div class="input-group">
+                        <label>Verified Email</label>
+                        <input type="email" id="upi-email" readonly style="background: rgba(255,255,255,0.05); color: var(--text-muted);">
+                    </div>
+                    <div class="input-group">
+                        <label>UTR Number / Transaction ID</label>
+                        <input type="text" id="upi-utr" placeholder="12-digit number">
+                        <span class="hint">Check your banking app history after paying</span>
+                    </div>
+                    <div class="input-group">
+                        <label>Your UPI ID (Optional)</label>
+                        <input type="text" id="upi-vpa" placeholder="yourname@upi">
+                    </div>
+                    
+                    <div class="upi-notice">
+                        <span class="material-icons-round">schedule</span>
+                        We manually verify and upgrade accounts within 1 hour.
+                    </div>
+
+                    <button id="submit-upi-btn" class="primary-btn" style="width: 100%; margin-top: 15px;">
+                        Proceed & I've Paid
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     </div>
 
