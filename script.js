@@ -1999,6 +1999,9 @@ function openPaddleCheckout() {
         return;
     }
 
+    // Detect if we're inside the Electron EXE or Android Capacitor App
+    const isNativeApp = !!(window.electronAPI || (window.Capacitor && window.Capacitor.platform !== 'web'));
+    
     Paddle.Checkout.open({
         items: [
             {
@@ -2010,7 +2013,9 @@ function openPaddleCheckout() {
             email: userEmail
         },
         settings: {
-            displayMode: "overlay",
+            // Use 'hosted' for native apps to trigger system browser, 
+            // use 'overlay' for regular web users.
+            displayMode: isNativeApp ? "hosted" : "overlay", 
             theme: "dark",
             locale: "en"
         }
