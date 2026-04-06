@@ -197,7 +197,18 @@ function init() {
     if (buttons.showUpiForm) {
         buttons.showUpiForm.addEventListener('click', () => {
             if (!state.currentUser) return showToast("Please login first");
+
+            // Pre-fill email
             document.getElementById('upi-email').value = state.currentUser.email;
+
+            // Calculate and display expiry (31 days from today)
+            const expiryDate = new Date();
+            expiryDate.setDate(expiryDate.getDate() + 31);
+            const options = { day: 'numeric', month: 'long', year: 'numeric' };
+            const formatted = expiryDate.toLocaleDateString('en-IN', options);
+            const el = document.getElementById('upi-expiry-date');
+            if (el) el.textContent = formatted;
+
             displays.upiModal.classList.remove('hidden');
         });
     }
