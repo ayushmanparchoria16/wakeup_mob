@@ -1030,6 +1030,123 @@ input:focus {
     }
 }
 
+/* --- Unified Premium Card --- */
+.unified-premium-card {
+    border-color: rgba(139, 92, 246, 0.4);
+    background: linear-gradient(145deg, rgba(139, 92, 246, 0.07) 0%, rgba(0, 140, 255, 0.04) 100%);
+    padding: 20px;
+}
+
+.pay-method-row {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.upi-method-row {
+    border-color: rgba(0, 140, 255, 0.2);
+    background: rgba(0, 140, 255, 0.04);
+}
+
+.pay-method-label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.india-tag {
+    background: rgba(0, 140, 255, 0.15);
+    color: #4da6ff;
+    font-size: 0.6rem;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 20px;
+    border: 1px solid rgba(0, 140, 255, 0.3);
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}
+
+.pay-method-price {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+
+.price-old {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    text-decoration: line-through;
+    opacity: 0.6;
+}
+
+.price-new {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: white;
+    background: linear-gradient(135deg, var(--primary), #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.price-period {
+    font-size: 0.75rem;
+    font-weight: 500;
+    -webkit-text-fill-color: var(--text-muted);
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+.pay-method-note {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.pay-method-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 10px;
+    font-size: 0.88rem;
+    margin-top: 4px;
+}
+
+.upi-pay-btn {
+    border-color: rgba(0, 140, 255, 0.5);
+    color: #4da6ff;
+}
+
+.upi-pay-btn:hover {
+    background: rgba(0, 140, 255, 0.1);
+    border-color: #008cff;
+}
+
+.pay-method-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    opacity: 0.6;
+    margin: 2px 0;
+}
+
+.pay-method-divider::before,
+.pay-method-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+
 /* UPI Payment Modal & Cards */
 .modal-overlay {
     position: fixed;

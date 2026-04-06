@@ -130,24 +130,45 @@
                     
                     <div class="onboarding-cards-grid">
                         
-                        <!-- Card 1: Premium via Paddle -->
-                        <div class="onboarding-card premium-card">
-                            <div class="card-badge">AUTO-ACTIVATE</div>
-                            <h3>International Pro</h3>
-                            <p>Instant access via Card/GPay. Use code <strong>LAUNCH80</strong> for 80% off.</p>
-                            <button onclick="openPaddleCheckout()" class="primary-btn" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.9rem;">
-                                Pay $0.99
-                            </button>
-                        </div>
+                        <!-- Unified Subscription Card -->
+                        <div class="onboarding-card unified-premium-card">
+                            <div class="card-badge">SUBSCRIBE MONTHLY</div>
+                            <h3>Pro Subscription</h3>
 
-                        <!-- Card 1.5: Manual UPI (India) -->
-                        <div class="onboarding-card upi-card">
-                            <div class="card-badge" style="background: #008cff;">POPULAR IN INDIA</div>
-                            <h3>Direct UPI Pay</h3>
-                            <p>Pay ₹85 via UPI. Get access in 1 hour.</p>
-                            <button id="show-upi-form-btn" class="secondary-btn" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.9rem; border-color: #008cff; color: #008cff;">
-                                View UPI Details
-                            </button>
+                            <!-- Method 1: International / Paddle -->
+                            <div class="pay-method-row">
+                                <div class="pay-method-label">
+                                    <span class="material-icons-round" style="font-size:16px; color: var(--text-muted);">credit_card</span>
+                                    <span>Card or PayPal</span>
+                                </div>
+                                <div class="pay-method-price">
+                                    <span class="price-old">$29</span>
+                                    <span class="price-new">$5.80<span class="price-period">/mo</span></span>
+                                </div>
+                                <div class="pay-method-note">Use code <strong>LAUNCH80</strong> for 80% off at checkout</div>
+                                <button onclick="openPaddleCheckout()" class="primary-btn pay-method-btn">
+                                    Pay via Card / PayPal
+                                </button>
+                            </div>
+
+                            <!-- Divider -->
+                            <div class="pay-method-divider"><span>or</span></div>
+
+                            <!-- Method 2: UPI India -->
+                            <div class="pay-method-row upi-method-row">
+                                <div class="pay-method-label">
+                                    <span class="material-icons-round" style="font-size:16px; color: #008cff;">qr_code</span>
+                                    <span>Direct UPI Pay</span>
+                                    <span class="india-tag">Popular in India</span>
+                                </div>
+                                <div class="pay-method-price">
+                                    <span class="price-new" style="color: #4da6ff;">₹199<span class="price-period">/mo</span></span>
+                                </div>
+                                <div class="pay-method-note">Verify & activate in under 1 hour</div>
+                                <button id="show-upi-form-btn" class="secondary-btn pay-method-btn upi-pay-btn">
+                                    Pay via UPI
+                                </button>
+                            </div>
                         </div>
                         
                         <!-- Card 2: Skip & Try Demo -->
