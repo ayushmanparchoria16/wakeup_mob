@@ -229,7 +229,10 @@ function handleRequest(params) {
                             "You now have full access to all premium AI features. Open the app and start your session!\n\n" +
                             "Thank you for choosing Interviewbold.\n\n" +
                             "Best regards,\nThe Interviewbold Team";
-                        MailApp.sendEmail(email, subj, body);
+                        GmailApp.sendEmail(email, subj, body, {
+                            from: 'interviewbold@gmail.com',
+                            name: 'Interviewbold Team'
+                        });
                     } catch(e) { Logger.log("Email error: " + e.message); }
 
                     break;
@@ -286,7 +289,10 @@ function handleRequest(params) {
                             "We apologize for the inconvenience.\n\n" +
                             "Best regards,\nThe Interviewbold Team\n" +
                             "Support: interviewbold@gmail.com";
-                        MailApp.sendEmail(email, subj, body);
+                        GmailApp.sendEmail(email, subj, body, {
+                            from: 'interviewbold@gmail.com',
+                            name: 'Interviewbold Team'
+                        });
                     } catch(e) { Logger.log("Email error: " + e.message); }
 
                     break;
@@ -641,7 +647,10 @@ function handleRequest(params) {
                     const subject = "Interviewbold - Password Reset";
                     const body = `Hello ${displayName},\n\nYour password has been reset.\n\nYour new temporary password is: ${tempPassword}\n\nPlease login using this temporary password.\n\nBest,\nInterviewbold Team`;
 
-                    MailApp.sendEmail(email, subject, body);
+                    GmailApp.sendEmail(email, subject, body, {
+                        from: 'interviewbold@gmail.com',
+                        name: 'Interviewbold Team'
+                    });
 
                     response.status = 'success';
                     response.message = 'A temporary password has been sent to your email.';
@@ -785,7 +794,10 @@ function handleRequest(params) {
                                 "Thank you for your patience!\n\n" +
                                 "Best regards,\nThe Interviewbold Team";
                 
-                MailApp.sendEmail(email, userSubject, userBody);
+                GmailApp.sendEmail(email, userSubject, userBody, {
+                    from: 'interviewbold@gmail.com',
+                    name: 'Interviewbold Team'
+                });
             } catch (e) {
                 Logger.log("Failed to send email to user: " + e.message);
             }
@@ -808,7 +820,10 @@ function handleRequest(params) {
                                 "📊 View all payments: " + sheetUrl + "\n\n" +
                                 "Note: Clicking Approve/Decline will automatically update the sheet and email the user.";
 
-                MailApp.sendEmail("interviewbold@gmail.com", adminSubject, adminBody);
+                GmailApp.sendEmail("interviewbold@gmail.com", adminSubject, adminBody, {
+                    from: 'interviewbold@gmail.com',
+                    name: 'Interviewbold Team'
+                });
             } catch (e) {
                 Logger.log("Failed to send email to admin: " + e.message);
             }
