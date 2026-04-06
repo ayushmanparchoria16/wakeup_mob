@@ -181,6 +181,125 @@ function handleRequest(params) {
         }
 
 
+        // --- ACTION: APPROVE MANUAL PAYMENT (One-click from email) ---
+        if (action === 'approvePayment') {
+            const email = params.email ? params.email.trim().toLowerCase() : "";
+            if (!email) return createHtmlResponse('❌ Error', 'No user email provided.');
+
+            const ss = SpreadsheetApp.getActiveSpreadsheet();
+            const sheet = ss.getSheetByName("Users");
+            if (!sheet) return createHtmlResponse('❌ Error', 'Users sheet not found.');
+
+            const data = sheet.getDataRange().getValues();
+            const subStatusCol = getOrCreateCol(sheet, "SubscriptionStatus");
+            const subExpiryCol = getOrCreateCol(sheet, "SubscriptionExpiry");
+
+            let displayName = email;
+            let found = false;
+
+            for (let i = 1; i < data.length; i++) {
+                if (data[i][0].toString().toLowerCase() === email) {
+                    displayName = data[i][2] || email;
+                    sheet.getRange(i + 1, subStatusCol + 1).setValue("Active");
+                    // Extend expiry 31 days from now
+                    const newExpiry = new Date();
+                    newExpiry.setDate(newExpiry.getDate() + 31);
+                    sheet.getRange(i + 1, subExpiryCol + 1).setValue(newExpiry.toISOString());
+                    found = true;
+
+                    // Update ManualPayments sheet status
+                    const manualSheet = ss.getSheetByName("ManualPayments");
+                    if (manualSheet) {
+                        const mData = manualSheet.getDataRange().getValues();
+                        for (let j = mData.length - 1; j >= 1; j--) {
+                            if (mData[j][0].toString().toLowerCase() === email && mData[j][5] === 'Pending Verification') {
+                                manualSheet.getRange(j + 1, 6).setValue('Approved ✅');
+                                break;
+                            }
+                        }
+                    }
+
+                    // Send CONGRATULATIONS email to user
+                    try {
+                        const subj = "🎉 Welcome to Interviewbold Pro!";
+                        const body = "Hello " + displayName + ",\n\n" +
+                            "Great news! Your payment has been verified and your account has been upgraded to Pro.\n\n" +
+                            "✅ Status: Active\n" +
+                            "📅 Valid until: " + newExpiry.toDateString() + "\n\n" +
+                            "You now have full access to all premium AI features. Open the app and start your session!\n\n" +
+                            "Thank you for choosing Interviewbold.\n\n" +
+                            "Best regards,\nThe Interviewbold Team";
+                        MailApp.sendEmail(email, subj, body);
+                    } catch(e) { Logger.log("Email error: " + e.message); }
+
+                    break;
+                }
+            }
+
+            if (found) {
+                return createHtmlResponse('✅ Payment Approved', 'Account for <strong>' + email + '</strong> has been upgraded to <strong>Pro</strong>. A congratulations email has been sent to the user.');
+            } else {
+                return createHtmlResponse('❌ User Not Found', 'No account found with email: ' + email);
+            }
+        }
+
+        // --- ACTION: DECLINE MANUAL PAYMENT (One-click from email) ---
+        if (action === 'declinePayment') {
+            const email = params.email ? params.email.trim().toLowerCase() : "";
+            if (!email) return createHtmlResponse('❌ Error', 'No user email provided.');
+
+            const ss = SpreadsheetApp.getActiveSpreadsheet();
+            const sheet = ss.getSheetByName("Users");
+            if (!sheet) return createHtmlResponse('❌ Error', 'Users sheet not found.');
+
+            const data = sheet.getDataRange().getValues();
+            let displayName = email;
+            let found = false;
+
+            for (let i = 1; i < data.length; i++) {
+                if (data[i][0].toString().toLowerCase() === email) {
+                    displayName = data[i][2] || email;
+                    found = true;
+
+                    // Update ManualPayments sheet status
+                    const manualSheet = ss.getSheetByName("ManualPayments");
+                    if (manualSheet) {
+                        const mData = manualSheet.getDataRange().getValues();
+                        for (let j = mData.length - 1; j >= 1; j--) {
+                            if (mData[j][0].toString().toLowerCase() === email && mData[j][5] === 'Pending Verification') {
+                                manualSheet.getRange(j + 1, 6).setValue('Declined ❌');
+                                break;
+                            }
+                        }
+                    }
+
+                    // Send DECLINE email to user
+                    try {
+                        const subj = "Interviewbold — Payment Verification Issue";
+                        const body = "Hello " + displayName + ",\n\n" +
+                            "We were unable to verify your recent payment details.\n\n" +
+                            "This could be due to an incorrect UTR number or a transaction mismatch.\n\n" +
+                            "Please reply to this email with:\n" +
+                            "  1. A screenshot of your payment confirmation\n" +
+                            "  2. Your correct UTR / Transaction ID\n\n" +
+                            "Once we receive your details, we will re-verify and upgrade your account promptly.\n\n" +
+                            "We apologize for the inconvenience.\n\n" +
+                            "Best regards,\nThe Interviewbold Team\n" +
+                            "Support: interviewbold@gmail.com";
+                        MailApp.sendEmail(email, subj, body);
+                    } catch(e) { Logger.log("Email error: " + e.message); }
+
+                    break;
+                }
+            }
+
+            if (found) {
+                return createHtmlResponse('❌ Payment Declined', 'The payment for <strong>' + email + '</strong> has been declined. A notification email has been sent to the user asking them to resubmit their payment screenshot.');
+            } else {
+                return createHtmlResponse('❌ User Not Found', 'No account found with email: ' + email);
+            }
+        }
+
         // --- PADDLE WEBHOOK HANDLER ---
         if (action === 'paddleWebhook') {
             const eventType = params.event_type;
@@ -671,18 +790,24 @@ function handleRequest(params) {
                 Logger.log("Failed to send email to user: " + e.message);
             }
 
-            // 3. Send Email to ADMIN
             try {
-                const adminSubject = "Action Required: New Manual UPI Payment for Interviewbold";
+                const adminSubject = "[Action Required] New UPI Payment — Interviewbold";
                 const sheetUrl = ss.getUrl();
-                const adminBody = "New Manual Payment Submitted!\n\n" +
-                                "User: " + email + "\n" +
-                                "UPI ID: " + upiId + "\n" +
-                                "UTR/Transaction ID: " + utr + "\n" +
-                                "Spreadsheet Link: " + sheetUrl + "\n\n" +
-                                "Please verify the transaction in your bank/UPI app and update the status in the 'Users' sheet to 'Active' to enable the user's features.\n\n" +
-                                "System Note: Subscription Expiry has already been set to 31 days from now.";
-                
+                const scriptUrl = ScriptApp.getService().getUrl();
+                const approveUrl = scriptUrl + "?action=approvePayment&email=" + encodeURIComponent(email);
+                const declineUrl = scriptUrl + "?action=declinePayment&email=" + encodeURIComponent(email);
+
+                const adminBody = "New Manual UPI Payment received!\n\n" +
+                                "👤 User: " + email + "\n" +
+                                "💳 UPI ID: " + upiId + "\n" +
+                                "🔢 UTR / Transaction ID: " + utr + "\n\n" +
+                                "──────────────────────────\n" +
+                                "✅ APPROVE (activates account instantly):\n" + approveUrl + "\n\n" +
+                                "❌ DECLINE (notifies user to resubmit):\n" + declineUrl + "\n" +
+                                "──────────────────────────\n\n" +
+                                "📊 View all payments: " + sheetUrl + "\n\n" +
+                                "Note: Clicking Approve/Decline will automatically update the sheet and email the user.";
+
                 MailApp.sendEmail("interviewbold@gmail.com", adminSubject, adminBody);
             } catch (e) {
                 Logger.log("Failed to send email to admin: " + e.message);
@@ -728,3 +853,36 @@ function createJsonResponse(data) {
     return ContentService.createTextOutput(jsonString)
         .setMimeType(ContentService.MimeType.JSON);
 }
+
+function createHtmlResponse(title, message) {
+    const isSuccess = title.includes('✅');
+    const color = isSuccess ? '#22c55e' : '#ef4444';
+    const bg = isSuccess ? '#052e16' : '#2d0a0a';
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${title}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background:#09090b; display:flex; align-items:center; justify-content:center;
+         min-height:100vh; padding:20px; }
+  .card { background:#18181b; border:1px solid rgba(255,255,255,0.1);
+          border-top:3px solid ${color}; border-radius:16px; padding:40px;
+          max-width:500px; width:100%; text-align:center; }
+  .icon { font-size:3rem; margin-bottom:16px; }
+  h1 { color:${color}; font-size:1.4rem; margin-bottom:12px; }
+  p { color:#a1a1aa; font-size:0.95rem; line-height:1.6; }
+  p strong { color:#fff; }
+  .badge { display:inline-block; background:${bg}; color:${color};
+           border:1px solid ${color}; border-radius:20px; padding:4px 14px;
+           font-size:0.8rem; font-weight:600; margin-top:20px; }
+</style></head><body>
+<div class="card">
+  <div class="icon">${isSuccess ? '✅' : '❌'}</div>
+  <h1>${title}</h1>
+  <p>${message}</p>
+  <div class="badge">Interviewbold Admin Panel</div>
+</div>
+</body></html>`;
+    return HtmlService.createHtmlOutput(html);
+}
+
