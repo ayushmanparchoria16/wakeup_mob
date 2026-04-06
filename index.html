@@ -120,7 +120,7 @@
                     
                     <div id="active-session-options" style="display: flex; justify-content: center; gap: 15px; margin-top: 15px;">
                         <a href="#" id="change-keys-btn" style="font-size: 0.75rem; color: var(--text-muted); text-decoration: none; border-bottom: 1px dotted rgba(255,255,255,0.3);">⚙️ Change API Keys</a>
-                        <a href="https://wakeupai.lemonsqueezy.com/checkout/buy/cf61c317-7656-4dad-91cc-5351f067e5e8?embed=1" class="lemonsqueezy-button" style="font-size: 0.75rem; color: var(--primary); text-decoration: none;">💎 Upgrade to Premium</a>
+                        <a href="javascript:void(0)" onclick="openPaddleCheckout()" class="nav-btn" style="font-size: 0.75rem; color: var(--primary); text-decoration: none;">💎 Upgrade to Premium</a>
                     </div>
                 </div>
 
@@ -135,10 +135,10 @@
                             <div class="card-badge">RECOMMENDED</div>
                             <h3>Premium Copilot</h3>
                             <p>Hassle-free AI. Instant access, no setup required. Use code <strong>LAUNCH20</strong> for 20% off.</p>
-                            <!-- Lemon Squeezy Button -->
-                            <a href="https://wakeupai.lemonsqueezy.com/checkout/buy/cf61c317-7656-4dad-91cc-5351f067e5e8?embed=1" class="lemonsqueezy-button primary-btn" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.9rem;">
-                                Subscribe for $29/mo
-                            </a>
+                            <!-- Paddle Button -->
+                            <button onclick="openPaddleCheckout()" class="primary-btn" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.9rem;">
+                                Subscribe for Premium
+                            </button>
                         </div>
                         
                         <!-- Card 2: Skip & Try Demo -->
@@ -350,8 +350,8 @@
 
     <script src="backend/config.js"></script>
     <script src="script.js?v=65"></script>
-    <!-- Lemon Squeezy JS -->
-    <script src="https://assets.lemonsqueezy.com/lemon.js" defer></script>
+    <!-- Paddle.js v2 -->
+    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
 </body>
 
 </html>

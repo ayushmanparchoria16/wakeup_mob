@@ -130,6 +130,14 @@ const displays = {
 // --- Initialization ---
 
 function init() {
+    // Initialize Paddle
+    if (typeof Paddle !== 'undefined') {
+        Paddle.Initialize({ 
+            token: "live_7bd4c07bde83385e5960f2c8cda",
+            environment: "live" 
+        });
+    }
+
     // Check local storage for user
     const savedUser = localStorage.getItem('interviewbold_user');
     if (savedUser) {
@@ -1965,6 +1973,44 @@ function parseMarkdown(text) {
     });
 
     return html;
+}
+
+/**
+ * PADDLE CHECKOUT INTEGRATION
+ */
+function openPaddleCheckout() {
+    if (typeof Paddle === 'undefined') {
+        showToast("Payment system loading, please wait...");
+        return;
+    }
+
+    const userEmail = state.currentUser ? state.currentUser.email : "";
+    
+    // NOTE: Replace 'pri_placeholder' with your actual Paddle Price ID from the dashboard
+    const PRICE_ID = "pri_01knh7qwtvzdkhc4qhsk700vmk"; 
+
+    if (PRICE_ID === "pri_placeholder") {
+        showToast("Checkout is being configured. Please check back in a few minutes.");
+        console.warn("Paddle Price ID is missing. Please update script.js with your 'pri_...' ID.");
+        return;
+    }
+
+    Paddle.Checkout.open({
+        items: [
+            {
+                priceId: PRICE_ID,
+                quantity: 1
+            }
+        ],
+        customer: {
+            email: userEmail
+        },
+        settings: {
+            displayMode: "overlay",
+            theme: "dark",
+            locale: "en"
+        }
+    });
 }
 
 window.addEventListener('load', init);

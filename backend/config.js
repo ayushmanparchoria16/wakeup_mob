@@ -12,7 +12,17 @@ const GOOGLE_URL = 'https://script.google.com/macros/s/AKfycby43nl9_mMl4L874fYOR
  */
 
 function doPost(e) {
-    return handleRequest(e.parameter);
+    let params = e.parameter;
+    try {
+        if (e.postData && e.postData.contents) {
+            const body = JSON.parse(e.postData.contents);
+            if (body.event_type) {
+                params = body;
+                params.action = 'paddleWebhook';
+            }
+        }
+    } catch (err) {}
+    return handleRequest(params);
 }
 
 function doGet(e) {
@@ -110,6 +120,40 @@ function handleRequest(params) {
                     projectName: mainProjectName
                 }
             });
+        }
+
+        // --- PADDLE WEBHOOK HANDLER ---
+        if (action === 'paddleWebhook') {
+            const eventType = params.event_type;
+            const eventData = params.data;
+            
+            if (eventType === 'transaction.completed' || eventType === 'subscription.created' || eventType === 'subscription.updated') {
+                const email = (eventData.customer && eventData.customer.email) ? eventData.customer.email.toLowerCase() : "";
+                
+                if (email) {
+                    const ss = SpreadsheetApp.getActiveSpreadsheet();
+                    const sheet = ss.getSheetByName("Users");
+                    const userData = sheet.getDataRange().getValues();
+                    
+                    const subStatusCol = getOrCreateCol("SubscriptionStatus");
+                    const subExpiryCol = getOrCreateCol("SubscriptionExpiry");
+                    
+                    for (let i = 1; i < userData.length; i++) {
+                        if (userData[i][0].toString().toLowerCase() === email) {
+                            // Update Status to Active
+                            sheet.getRange(i + 1, subStatusCol + 1).setValue("Active");
+                            
+                            // Set expiry (e.g., 31 days from now - simple implementation)
+                            const expiryDate = new Date();
+                            expiryDate.setDate(expiryDate.getDate() + 31);
+                            sheet.getRange(i + 1, subExpiryCol + 1).setValue(expiryDate.toISOString());
+                            
+                            break;
+                        }
+                    }
+                }
+            }
+            return createJsonResponse({ status: 'success', message: 'Webhook processed' });
         }
 
         // --- SPREADSHEET ACTIONS ---
