@@ -131,11 +131,15 @@ const displays = {
 
 function init() {
     // Initialize Paddle
-    if (typeof Paddle !== 'undefined') {
-        Paddle.Initialize({ 
-            token: "live_7bd4c07bde83385e5960f2c8cda",
-            environment: "live" 
-        });
+    try {
+        if (typeof Paddle !== 'undefined') {
+            Paddle.Initialize({ 
+                token: "live_7bd4c07bde83385e5960f2c8cda",
+                environment: "production" 
+            });
+        }
+    } catch (err) {
+        console.error("Paddle initialization failed:", err);
     }
 
     // Check local storage for user

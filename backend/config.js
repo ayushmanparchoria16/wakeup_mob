@@ -107,7 +107,6 @@ function handleRequest(params) {
                 debugInfo.push({
                     projectId: projectId,
                     projectName: project.name,
-                    status: balanceRes.getResponseCode(),
                     raw: rawBalance
                 });
             }
@@ -120,6 +119,22 @@ function handleRequest(params) {
                     projectName: mainProjectName
                 }
             });
+        }
+
+        // --- DATABASE HELPERS (Available for both Webhooks and Actions) ---
+        function getColIdx(sheet, colName) {
+            const currentHeaders = sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0];
+            return currentHeaders.indexOf(colName);
+        }
+
+        function getOrCreateCol(sheet, colName) {
+            let idx = getColIdx(sheet, colName);
+            if (idx === -1) {
+                const lastCol = sheet.getLastColumn();
+                sheet.getRange(1, lastCol + 1).setValue(colName).setFontWeight("bold");
+                return lastCol;
+            }
+            return idx;
         }
 
         // --- PADDLE WEBHOOK HANDLER ---
@@ -135,19 +150,15 @@ function handleRequest(params) {
                     const sheet = ss.getSheetByName("Users");
                     const userData = sheet.getDataRange().getValues();
                     
-                    const subStatusCol = getOrCreateCol("SubscriptionStatus");
-                    const subExpiryCol = getOrCreateCol("SubscriptionExpiry");
+                    const subStatusCol = getOrCreateCol(sheet, "SubscriptionStatus");
+                    const subExpiryCol = getOrCreateCol(sheet, "SubscriptionExpiry");
                     
                     for (let i = 1; i < userData.length; i++) {
                         if (userData[i][0].toString().toLowerCase() === email) {
-                            // Update Status to Active
                             sheet.getRange(i + 1, subStatusCol + 1).setValue("Active");
-                            
-                            // Set expiry (e.g., 31 days from now - simple implementation)
                             const expiryDate = new Date();
                             expiryDate.setDate(expiryDate.getDate() + 31);
                             sheet.getRange(i + 1, subExpiryCol + 1).setValue(expiryDate.toISOString());
-                            
                             break;
                         }
                     }
@@ -156,7 +167,6 @@ function handleRequest(params) {
             return createJsonResponse({ status: 'success', message: 'Webhook processed' });
         }
 
-        // --- SPREADSHEET ACTIONS ---
         const ss = SpreadsheetApp.getActiveSpreadsheet();
         const sheet = ss.getSheetByName("Users");
 
@@ -168,28 +178,12 @@ function handleRequest(params) {
         }
 
         const data = sheet.getDataRange().getValues();
-        // Helper to find column index by name
-        const getColIdx = (colName) => {
-            const currentHeaders = sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0];
-            return currentHeaders.indexOf(colName);
-        };
-
-        const getOrCreateCol = (colName) => {
-            let idx = getColIdx(colName);
-            if (idx === -1) {
-                idx = sheet.getLastColumn();
-                sheet.getRange(1, idx + 1).setValue(colName).setFontWeight("bold");
-                return idx;
-            }
-            return idx;
-        };
-
-        const subStatusCol = getColIdx("SubscriptionStatus");
-        const subExpiryCol = getColIdx("SubscriptionExpiry");
-        const demoCountCol = getOrCreateCol("DemoSessionsDone");
-        const demoDateCol = getOrCreateCol("LastDemoAt");
-        const pooledColIdx = getOrCreateCol("PooledApiTotalMinUsed");
-        const dgKeyColIdx = getOrCreateCol("DeepgramKey");
+        const subStatusCol = getColIdx(sheet, "SubscriptionStatus");
+        const subExpiryCol = getColIdx(sheet, "SubscriptionExpiry");
+        const demoCountCol = getOrCreateCol(sheet, "DemoSessionsDone");
+        const demoDateCol = getOrCreateCol(sheet, "LastDemoAt");
+        const pooledColIdx = getOrCreateCol(sheet, "PooledApiTotalMinUsed");
+        const dgKeyColIdx = getOrCreateCol(sheet, "DeepgramKey");
 
         // --- ACTION: REGISTER ---
         if (action === 'register') {
