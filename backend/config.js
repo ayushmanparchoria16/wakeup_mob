@@ -386,8 +386,8 @@ function handleRequest(params) {
             const reasoningMode = params.reasoningMode || "";
             const puterUser = params.puterUser || "";
 
-            const reasonColIdx = getOrCreateCol("ReasoningMode");
-            const puterUserColIdx = getOrCreateCol("PuterUsername");
+            const reasonColIdx = getOrCreateCol(sheet, "ReasoningMode");
+            const puterUserColIdx = getOrCreateCol(sheet, "PuterUsername");
 
             for (let i = 1; i < data.length; i++) {
                 const sheetEmail = data[i][0].toString().toLowerCase();
@@ -409,7 +409,7 @@ function handleRequest(params) {
                     if (puterUser) sheet.getRange(i + 1, puterUserColIdx + 1).setValue(puterUser);
                 }
                 if (providerEmail && sheetEmail === providerEmail) {
-                    const pooledColIdx = getColIdx("PooledApiTotalMinUsed");
+                    const pooledColIdx = getColIdx(sheet, "PooledApiTotalMinUsed");
                     if (pooledColIdx > -1) {
                         const currentPooled = parseFloat(data[i][pooledColIdx]) || 0;
                         sheet.getRange(i + 1, pooledColIdx + 1).setValue(currentPooled + mins);
@@ -442,10 +442,10 @@ function handleRequest(params) {
             const email = params.email ? params.email.trim().toLowerCase() : "";
             
             // Columns already initialized by getOrCreateCol helper at start of handleRequest
-            const keyColIdx = getColIdx("DeepgramKey");
-            const demoCountCol = getColIdx("DemoSessionsDone");
-            const demoDateCol = getColIdx("LastDemoAt");
-            const pooledColIdx = getColIdx("PooledApiTotalMinUsed");
+            const keyColIdx = getColIdx(sheet, "DeepgramKey");
+            const demoCountCol = getColIdx(sheet, "DemoSessionsDone");
+            const demoDateCol = getColIdx(sheet, "LastDemoAt");
+            const pooledColIdx = getColIdx(sheet, "PooledApiTotalMinUsed");
             
             if (keyColIdx === -1) {
                 return createJsonResponse({ status: 'error', message: 'No Deepgram keys available in database.' });
