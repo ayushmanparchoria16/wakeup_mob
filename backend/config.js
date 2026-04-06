@@ -786,14 +786,40 @@ function handleRequest(params) {
 
             // 2. Send Email to USER
             try {
-                const userSubject = "Payment Received - Verification in Progress for Interviewbold";
-                const userBody = "Hello,\n\n" +
-                                "Thank you for your payment! We have received your manual UPI payment details (UTR: " + utr + ").\n\n" +
-                                "Our team is currently verifying the transaction. Your account will be upgraded to Premium status within the next hour.\n\n" +
-                                "Once activated, you will have full access to all AI features and pooled resources.\n\n" +
-                                "Thank you for your patience!\n\n" +
-                                "Best regards,\nThe Interviewbold Team";
-                
+                const userSubject = "✅ Payment Request Received — Interviewbold Pro";
+                const expiryDate = new Date();
+                expiryDate.setDate(expiryDate.getDate() + 31);
+                const expiryStr = expiryDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+                const submittedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+                const userBody =
+                    "Hey there! 👋\n\n" +
+                    "Thank you for subscribing to Interviewbold Pro. We've received your payment request and are currently verifying it.\n\n" +
+                    "━━━━━━━━━━━━━━━━━━━━━━\n" +
+                    "📋  PAYMENT DETAILS\n" +
+                    "━━━━━━━━━━━━━━━━━━━━━━\n" +
+                    "  Plan          : Interviewbold Pro (1 Month)\n" +
+                    "  Amount        : ₹199\n" +
+                    "  UTR / Txn ID  : " + utr + "\n" +
+                    (upiId !== "N/A" ? "  Your UPI ID   : " + upiId + "\n" : "") +
+                    "  Submitted At  : " + submittedAt + " IST\n" +
+                    "  Valid Until   : " + expiryStr + " (upon activation)\n" +
+                    "━━━━━━━━━━━━━━━━━━━━━━\n\n" +
+                    "⏱️  WHAT HAPPENS NEXT?\n\n" +
+                    "  1. Our team will verify your transaction in your UPI app.\n" +
+                    "  2. Once confirmed, your account will be upgraded to Pro.\n" +
+                    "  3. You will receive a separate confirmation email with your activation details.\n\n" +
+                    "⚡ Average verification time: Under 1 hour.\n\n" +
+                    "━━━━━━━━━━━━━━━━━━━━━━\n" +
+                    "❓  NEED HELP?\n" +
+                    "━━━━━━━━━━━━━━━━━━━━━━\n" +
+                    "If you have any questions or issues, simply reply to this email or reach us at:\n" +
+                    "📧  interviewbold@gmail.com\n\n" +
+                    "Thank you for choosing Interviewbold. We'll be in touch soon!\n\n" +
+                    "Best regards,\n" +
+                    "The Interviewbold Team\n" +
+                    "https://interviewbold.vercel.app";
+
                 GmailApp.sendEmail(email, userSubject, userBody, {
                     from: 'interviewbold@gmail.com',
                     name: 'Interviewbold Team'
