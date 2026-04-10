@@ -442,6 +442,48 @@
     <script src="script.js?v=65"></script>
     <!-- Paddle.js v2 -->
     <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+    <script>
+        // --- PUTER LOGIN BRIDGE FOR NATIVE APPS ---
+        (function() {
+            const isNativeApp = !!(window.electronAPI || (window.Capacitor && window.Capacitor.platform !== 'web'));
+            
+            // Listen for Desktop Token (Electron)
+            if (window.electronAPI && window.electronAPI.onPuterAuthToken) {
+                window.electronAPI.onPuterAuthToken(token => {
+                    localStorage.setItem('puter-auth-token', token);
+                    location.reload();
+                });
+            }
+
+            // Listen for Mobile Token (Android/Capacitor)
+            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+                window.Capacitor.Plugins.App.addListener('appUrlOpen', data => {
+                    if (data.url && data.url.includes('token=')) {
+                        const token = data.url.split('token=')[1].split('&')[0];
+                        localStorage.setItem('puter-auth-token', token);
+                        location.reload();
+                    }
+                });
+            }
+
+            // Override button behavior for native environments
+            document.addEventListener('DOMContentLoaded', () => {
+                const checkBtn = setInterval(() => {
+                    const btn = document.getElementById('connect-puter-btn');
+                    if (btn) {
+                        clearInterval(checkBtn);
+                        if (isNativeApp) {
+                            const newBtn = btn.cloneNode(true);
+                            btn.parentNode.replaceChild(newBtn, btn);
+                            newBtn.addEventListener('click', () => {
+                                window.open('https://interviewbold.vercel.app/login.html', '_blank');
+                            });
+                        }
+                    }
+                }, 100);
+            });
+        })();
+    </script>
 </body>
 
 </html>
