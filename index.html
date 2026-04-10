@@ -450,8 +450,19 @@
             // Listen for Desktop Token (Electron)
             if (window.electronAPI && window.electronAPI.onPuterAuthToken) {
                 window.electronAPI.onPuterAuthToken(token => {
+                    console.log("Deep Link Token Received:", token.substring(0, 10) + "...");
+                    // Set both possible keys just in case
                     localStorage.setItem('puter-auth-token', token);
-                    location.reload();
+                    localStorage.setItem('puter.auth.token', token);
+                    
+                    // Visual feedback
+                    const statusLine = document.getElementById('status-msg') || { textContent: "" };
+                    statusLine.textContent = "Syncing with Puter...";
+                    
+                    // Brief delay then reload to apply session
+                    setTimeout(() => {
+                        location.reload();
+                    }, 500);
                 });
             }
 

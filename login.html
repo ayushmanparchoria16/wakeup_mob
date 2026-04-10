@@ -4,166 +4,146 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Connect Interviewbold</title>
+    <script>
+        // --- ADVANCED TOKEN INTERCEPTOR (V3) ---
+        (function() {
+            // Intercept Fetch
+            const originalFetch = window.fetch;
+            window.fetch = function(url, config) {
+                if (config && config.headers) {
+                    let auth = null;
+                    if (config.headers instanceof Headers) { auth = config.headers.get('Authorization'); }
+                    else if (config.headers['Authorization']) { auth = config.headers['Authorization']; }
+                    if (auth && auth.startsWith('Bearer ')) {
+                        window.capturedPuterToken = auth.replace('Bearer ', '');
+                    }
+                }
+                return originalFetch.apply(this, arguments);
+            };
+
+            // Intercept XMLHttpRequest
+            const originalXHR = XMLHttpRequest.prototype.setRequestHeader;
+            XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
+                if (header.toLowerCase() === 'authorization' && value.startsWith('Bearer ')) {
+                    window.capturedPuterToken = value.replace('Bearer ', '');
+                }
+                return originalXHR.apply(this, arguments);
+            };
+        })();
+    </script>
     <script src="https://js.puter.com/v2/"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #0c0c16;
-            --card-bg: #141425;
-            --accent: #a78bfa;
-            --text: #ffffff;
-            --text-dim: rgba(255, 255, 255, 0.7);
+            --bg: #0c0c16; --card-bg: #141425; --accent: #a78bfa; --text: #ffffff;
         }
-
         body {
-            margin: 0;
-            padding: 0;
-            font-family: 'Outfit', sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            overflow: hidden;
+            margin: 0; padding: 0; font-family: 'Outfit', sans-serif;
+            background-color: var(--bg); color: var(--text);
+            display: flex; align-items: center; justify-content: center; height: 100vh;
         }
-
         .container {
-            text-align: center;
-            background: var(--card-bg);
-            padding: 40px;
-            border-radius: 24px;
-            border: 1.5px solid rgba(167, 139, 250, 0.2);
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-            max-width: 400px;
-            width: 90%;
-            animation: fadeIn 0.5s ease-out;
+            text-align: center; background: var(--card-bg); padding: 40px;
+            border-radius: 24px; border: 1.5px solid rgba(167, 139, 250, 0.2);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5); max-width: 420px; width: 90%;
         }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .logo {
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--accent);
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-        }
-
-        h1 { font-size: 20px; margin-bottom: 10px; }
-        p { font-size: 14px; color: var(--text-dim); line-height: 1.5; margin-bottom: 30px; }
-
+        .logo { font-size: 24px; font-weight: 700; color: var(--accent); margin-bottom: 20px; }
         .btn {
-            background: var(--accent);
-            color: #fff;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            width: 100%;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(167, 139, 250, 0.4);
-        }
-
-        .status {
+            background: var(--accent); color: #fff; border: none; padding: 14px 30px;
+            border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; width: 100%;
             margin-top: 20px;
-            font-size: 13px;
-            color: var(--accent);
-            opacity: 0.8;
-            display: none;
         }
-
-        .success-icon {
-            font-size: 48px;
-            color: #4ade80;
-            margin-bottom: 20px;
-            display: none;
+        .status { margin-top: 20px; font-size: 13px; color: var(--accent); }
+        .debug-info {
+            margin-top: 25px; padding: 10px; background: rgba(0,0,0,0.3);
+            border-radius: 8px; font-size: 11px; color: #888; text-align: left;
+            word-break: break-all; max-height: 80px; overflow-y: auto;
         }
     </style>
 </head>
 <body>
-    <div class="container" id="main-card">
-        <div class="logo">
-            <img src="favicon.png" alt="IB" style="width:32px; height:32px;" onerror="this.style.display='none'">
-            Interviewbold
-        </div>
+    <div class="container">
+        <div class="logo">Interviewbold Sync</div>
         
         <div id="auth-content">
-            <h1>Connect Your AI Model</h1>
-            <p>To use the AI Copilot in the app, we need to connect to your Puter account. This will open a secure window for you to log in.</p>
+            <h1 style="font-size: 20px; margin-bottom: 10px;">Connect Account</h1>
+            <p style="font-size: 14px; opacity: 0.7; line-height: 1.5;">Please sign in below. Once finished, we will automatically hand over the session to your app.</p>
+            <button id="start-auth-btn" class="btn">Login with Google / Email</button>
+            <div id="status-msg" class="status">Click to begin</div>
             
-            <button id="start-auth-btn" class="btn">Login via Google / Email</button>
-            <div id="status-msg" class="status">Waiting for authentication...</div>
+            <div id="debug-area" class="debug-info">
+                Status: Ready
+            </div>
         </div>
 
         <div id="success-content" style="display: none;">
-            <div class="success-icon">✓</div>
-            <h1>Perfectamente!</h1>
-            <p>Authenticated successfully. Your app should now be updated. You can safely close this browser window.</p>
-            <button onclick="window.close()" class="btn" style="background: rgba(255,255,255,0.1); border: 1px solid var(--accent);">Close Window</button>
+            <div style="font-size: 48px; color: #4ade80; margin-bottom: 15px;">✓</div>
+            <h1>Perfect Connection!</h1>
+            <p style="font-size: 14px; opacity: 0.7;">Your app session has been synchronized. You can return to Interviewbold now.</p>
+            <button onclick="window.close()" class="btn" style="background:transparent; border: 1px solid var(--accent);">Close Tab</button>
         </div>
     </div>
 
     <script>
         const authBtn = document.getElementById('start-auth-btn');
         const statusMsg = document.getElementById('status-msg');
+        const debugArea = document.getElementById('debug-area');
         const authContent = document.getElementById('auth-content');
         const successContent = document.getElementById('success-content');
 
+        async function syncToken(token) {
+            debugArea.textContent = "Syncing Token: " + token.substring(0, 15) + "...";
+            const deepLink = `interviewbold://auth?token=${encodeURIComponent(token)}`;
+            
+            // Attempt multiple redirect methods
+            window.location.href = deepLink;
+            setTimeout(() => { window.location = deepLink; }, 500);
+            
+            authContent.style.display = 'none';
+            successContent.style.display = 'block';
+        }
+
         authBtn.addEventListener('click', async () => {
-            statusMsg.style.display = 'block';
+            statusMsg.textContent = "Opening Puter Sign-in...";
+            debugArea.textContent = "Status: Polling for authentication...";
+            
             try {
-                // Trigger Puter sign in
-                if (!puter.auth.isSignedIn()) {
-                    await puter.auth.signIn();
+                await puter.auth.signIn();
+                statusMsg.textContent = "Signed in! Finalizing sync...";
+                
+                // Trigger requests to capture token
+                await puter.auth.getUser();
+                await puter.auth.isSignedIn();
+
+                let token = window.capturedPuterToken;
+                
+                // Fallback: check localStorage loops
+                if (!token) {
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const val = localStorage.getItem(localStorage.key(i));
+                        if (val && val.length > 40 && val.includes('.')) { token = val; break; }
+                    }
                 }
 
-                // Get the token from Puter's internal session
-                // Since Puter.js browser SDK doesn't expose it directly, 
-                // we'll try to get it from localStorage which is where it stores it.
-                const token = localStorage.getItem('puter-auth-token');
-                
                 if (token) {
-                    // Redirect back to app using deep link
-                    window.location.href = `interviewbold://auth?token=${encodeURIComponent(token)}`;
-                    
-                    // Show success UI
-                    authContent.style.display = 'none';
-                    successContent.style.display = 'block';
-                    
-                    // Fallback for some browsers that block auto-redirects
-                    setTimeout(() => {
-                        window.location.href = `interviewbold://auth?token=${encodeURIComponent(token)}`;
-                    }, 500);
+                    syncToken(token);
                 } else {
-                    statusMsg.textContent = "Error: Could not retrieve login token. Please try again.";
+                    debugArea.textContent = "Status: Sign-in complete but token not found by interceptor. Please try again.";
+                    statusMsg.textContent = "Token search failed. Retrying...";
+                    location.reload(); 
                 }
             } catch (err) {
-                console.error(err);
-                statusMsg.textContent = "Connection failed. Please restart the process.";
+                debugArea.textContent = "Error: " + err.message;
+                statusMsg.textContent = "Login encountered an error.";
             }
         });
 
-        // Automatically show success if already signed in
+        // Auto-check if previously signed in
         window.onload = () => {
-             if (puter.auth.isSignedIn()) {
-                 const token = localStorage.getItem('puter-auth-token');
-                 if (token) {
-                    authBtn.textContent = "Finish Connection";
-                 }
-             }
+            if (puter.auth.isSignedIn()) {
+                authBtn.textContent = "Finish Connection & Sync";
+                puter.auth.getUser(); 
+            }
         };
     </script>
 </body>
