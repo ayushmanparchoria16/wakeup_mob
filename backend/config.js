@@ -799,7 +799,7 @@ function handleRequest(params) {
                     "📋  PAYMENT DETAILS\n" +
                     "━━━━━━━━━━━━━━━━━━━━━━\n" +
                     "  Plan          : Interviewbold Pro (1 Month)\n" +
-                    "  Amount        : ₹199\n" +
+                    "  Amount        : ₹500\n" +
                     "  UTR / Txn ID  : " + utr + "\n" +
                     (upiId !== "N/A" ? "  Your UPI ID   : " + upiId + "\n" : "") +
                     "  Submitted At  : " + submittedAt + " IST\n" +
