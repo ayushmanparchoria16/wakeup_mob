@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connect Interviewbold</title>
+    <script src="https://js.puter.com/v2/"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0c0c16;
+            --card-bg: #141425;
+            --accent: #a78bfa;
+            --text: #ffffff;
+            --text-dim: rgba(255, 255, 255, 0.7);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            background: var(--card-bg);
+            padding: 40px;
+            border-radius: 24px;
+            border: 1.5px solid rgba(167, 139, 250, 0.2);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            max-width: 400px;
+            width: 90%;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        h1 { font-size: 20px; margin-bottom: 10px; }
+        p { font-size: 14px; color: var(--text-dim); line-height: 1.5; margin-bottom: 30px; }
+
+        .btn {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(167, 139, 250, 0.4);
+        }
+
+        .status {
+            margin-top: 20px;
+            font-size: 13px;
+            color: var(--accent);
+            opacity: 0.8;
+            display: none;
+        }
+
+        .success-icon {
+            font-size: 48px;
+            color: #4ade80;
+            margin-bottom: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="main-card">
+        <div class="logo">
+            <img src="favicon.png" alt="IB" style="width:32px; height:32px;" onerror="this.style.display='none'">
+            Interviewbold
+        </div>
+        
+        <div id="auth-content">
+            <h1>Connect Your AI Model</h1>
+            <p>To use the AI Copilot in the app, we need to connect to your Puter account. This will open a secure window for you to log in.</p>
+            
+            <button id="start-auth-btn" class="btn">Login via Google / Email</button>
+            <div id="status-msg" class="status">Waiting for authentication...</div>
+        </div>
+
+        <div id="success-content" style="display: none;">
+            <div class="success-icon">✓</div>
+            <h1>Perfectamente!</h1>
+            <p>Authenticated successfully. Your app should now be updated. You can safely close this browser window.</p>
+            <button onclick="window.close()" class="btn" style="background: rgba(255,255,255,0.1); border: 1px solid var(--accent);">Close Window</button>
+        </div>
+    </div>
+
+    <script>
+        const authBtn = document.getElementById('start-auth-btn');
+        const statusMsg = document.getElementById('status-msg');
+        const authContent = document.getElementById('auth-content');
+        const successContent = document.getElementById('success-content');
+
+        authBtn.addEventListener('click', async () => {
+            statusMsg.style.display = 'block';
+            try {
+                // Trigger Puter sign in
+                if (!puter.auth.isSignedIn()) {
+                    await puter.auth.signIn();
+                }
+
+                // Get the token from Puter's internal session
+                // Since Puter.js browser SDK doesn't expose it directly, 
+                // we'll try to get it from localStorage which is where it stores it.
+                const token = localStorage.getItem('puter-auth-token');
+                
+                if (token) {
+                    // Redirect back to app using deep link
+                    window.location.href = `interviewbold://auth?token=${encodeURIComponent(token)}`;
+                    
+                    // Show success UI
+                    authContent.style.display = 'none';
+                    successContent.style.display = 'block';
+                    
+                    // Fallback for some browsers that block auto-redirects
+                    setTimeout(() => {
+                        window.location.href = `interviewbold://auth?token=${encodeURIComponent(token)}`;
+                    }, 500);
+                } else {
+                    statusMsg.textContent = "Error: Could not retrieve login token. Please try again.";
+                }
+            } catch (err) {
+                console.error(err);
+                statusMsg.textContent = "Connection failed. Please restart the process.";
+            }
+        });
+
+        // Automatically show success if already signed in
+        window.onload = () => {
+             if (puter.auth.isSignedIn()) {
+                 const token = localStorage.getItem('puter-auth-token');
+                 if (token) {
+                    authBtn.textContent = "Finish Connection";
+                 }
+             }
+        };
+    </script>
+</body>
+</html>
