@@ -469,10 +469,20 @@
             // Listen for Mobile Token (Android/Capacitor)
             if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
                 window.Capacitor.Plugins.App.addListener('appUrlOpen', data => {
+                    console.log("Mobile Deep Link Received:", data.url);
                     if (data.url && data.url.includes('token=')) {
-                        const token = data.url.split('token=')[1].split('&')[0];
-                        localStorage.setItem('puter-auth-token', token);
-                        location.reload();
+                        const match = data.url.match(/token=([^&]+)/);
+                        const token = match ? decodeURIComponent(match[1]) : null;
+                        
+                        if (token) {
+                            localStorage.setItem('puter-auth-token', token);
+                            localStorage.setItem('puter.auth.token', token);
+                            
+                            const statusLine = document.getElementById('status-msg') || { textContent: "" };
+                            statusLine.textContent = "Mobile Sync Success!";
+                            
+                            setTimeout(() => { location.reload(); }, 500);
+                        }
                     }
                 });
             }
