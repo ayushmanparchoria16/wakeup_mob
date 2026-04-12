@@ -2165,6 +2165,24 @@ async function checkForUpdates() {
     if (!isNativeApp) return;
 
     console.log("Checking for updates...");
+    
+    // Determine native version
+    let nativeVersion = CONFIG.VERSION;
+    let isOldNativeApp = false;
+
+    if (window.electronAPI) {
+        if (window.electronAPI.getAppVersion) {
+            nativeVersion = await window.electronAPI.getAppVersion();
+        } else {
+            isOldNativeApp = true; // Old EXE without version reporting
+        }
+    } else if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+        try {
+            const info = await window.Capacitor.Plugins.App.getInfo();
+            nativeVersion = info.version;
+        } catch (e) {}
+    }
+
     try {
         const response = await fetch(`https://api.github.com/repos/${CONFIG.GITHUB_REPO}/releases/latest`);
         if (!response.ok) throw new Error("GitHub API unreachable");
@@ -2172,8 +2190,9 @@ async function checkForUpdates() {
         const latest = await response.json();
         const latestTag = latest.tag_name; // e.g. "v1.1.0" or "1.1.0"
 
-        if (isNewerVersion(latestTag, CONFIG.VERSION)) {
-            console.log(`Update found: ${latestTag}`);
+        // Trigger update if it's an old app (missing v-reporting) OR if newer version exists
+        if (isOldNativeApp || isNewerVersion(latestTag, nativeVersion)) {
+            console.log(`Update found: ${latestTag} (Native: ${nativeVersion}, isOld: ${isOldNativeApp})`);
             
             // Determine platform and find matching asset
             const isAndroid = window.Capacitor && window.Capacitor.platform === 'android';
