@@ -2176,11 +2176,17 @@ async function checkForUpdates() {
         } else {
             isOldNativeApp = true; // Old EXE without version reporting
         }
-    } else if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
-        try {
-            const info = await window.Capacitor.Plugins.App.getInfo();
-            nativeVersion = info.version;
-        } catch (e) {}
+    } else if (window.Capacitor && window.Capacitor.platform !== 'web') {
+        if (window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+            try {
+                const info = await window.Capacitor.Plugins.App.getInfo();
+                nativeVersion = info.version;
+            } catch (e) {
+                isOldNativeApp = true; // Bridge error, likely old build
+            }
+        } else {
+            isOldNativeApp = true; // Old APK without App plugin
+        }
     }
 
     try {
