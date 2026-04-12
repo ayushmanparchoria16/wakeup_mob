@@ -2163,11 +2163,21 @@ window.addEventListener('load', init);
  */
 
 async function checkForUpdates() {
-    // TEMPORARY DEBUG: Force popup for everyone to see if it triggers on Android
-    const isNativeApp = true;
-    const isOldNativeApp = true;
+    // Broad detection: Electron, Capacitor, or Android/iOS UserAgents
+    const isCapacitor = !!window.Capacitor;
+    const isElectron = !!window.electronAPI;
+    const isMobileApp = /Capacitor|Android|iPhone|iPad/i.test(navigator.userAgent) && (isCapacitor || window.location.protocol === 'file:');
     
-    console.log("DEBUG: Forcing Update Check");
+    const isNativeApp = isElectron || isCapacitor || isMobileApp;
+    
+    console.log("Update Check Status:", {
+        isNativeApp,
+        isElectron,
+        isCapacitor,
+        userAgent: navigator.userAgent
+    });
+
+    if (!isNativeApp) return;
     
     // Determine native version
     let nativeVersion = CONFIG.VERSION;
@@ -2202,16 +2212,26 @@ async function checkForUpdates() {
         const latest = await response.json();
         const latestTag = latest.tag_name; // e.g. "v1.1.0" or "1.1.0"
 
-        // FORCED DEBUG: Always show popup
-        console.log(`DEBUG: Showing forced popup for ${latestTag}`);
-        
-        let downloadUrl = "";
-        // Default to APK for mobile test
-        const apkAsset = latest.assets.find(a => a.name.toLowerCase().endsWith('.apk'));
-        if (apkAsset) downloadUrl = apkAsset.browser_download_url;
+        // Trigger update if it's an old app (missing v-reporting) OR if newer version exists
+        if (isOldNativeApp || isNewerVersion(latestTag, nativeVersion)) {
+            console.log(`Update found: ${latestTag} (Native: ${nativeVersion}, isOld: ${isOldNativeApp})`);
+            
+            // Determine platform and find matching asset
+            const isAndroid = window.Capacitor && window.Capacitor.platform === 'android';
+            const isWindows = !!window.electronAPI;
 
-        if (downloadUrl) {
-            showUpdatePopup(latestTag, latest.body, downloadUrl);
+            let downloadUrl = "";
+            if (isAndroid) {
+                const apkAsset = latest.assets.find(a => a.name.toLowerCase().endsWith('.apk'));
+                if (apkAsset) downloadUrl = apkAsset.browser_download_url;
+            } else if (isWindows) {
+                const exeAsset = latest.assets.find(a => a.name.toLowerCase().endsWith('.exe'));
+                if (exeAsset) downloadUrl = exeAsset.browser_download_url;
+            }
+
+            if (downloadUrl) {
+                showUpdatePopup(latestTag, latest.body, downloadUrl);
+            }
         }
     } catch (e) {
         console.error("Auto-Update Error:", e);
