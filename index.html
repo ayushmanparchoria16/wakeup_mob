@@ -176,52 +176,6 @@
                     </div>
 
 
-                    <!-- Resource Status Dashboard (Puter Only Now) -->
-                    <div id="resource-status-card" class="glass-card usage-card hidden"
-                        style="margin-top: 20px; padding: 20px; text-align: left; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05);">
-                        <div
-                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
-                            <span
-                                style="font-size: 0.95rem; font-weight: 500; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
-                                Puter Resources <span class="material-icons-round"
-                                    style="font-size: 16px; color: var(--text-muted); opacity: 0.5;">chevron_right</span>
-                            </span>
-                            <span id="usage-refresh-time"
-                                style="font-size: 0.75rem; color: var(--text-muted); opacity: 0.7;">Updated: --</span>
-                        </div>
-
-                        <!-- Puter Usage (Primary) -->
-                        <div style="margin-bottom: 0px;">
-                            <div id="puter-usage-container">
-                                <div
-                                    style="height: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 12px; overflow: hidden;">
-                                    <div id="puter-usage-bar"
-                                        style="width: 0%; height: 100%; background: linear-gradient(90deg, #f59e0b, #fbbf24); border-radius: 6px; transition: width 0.5s ease;">
-                                    </div>
-                                </div>
-                                <div style="display: flex; flex-direction: column; gap: 2px;">
-                                    <div id="puter-usage-text"
-                                        style="font-size: 1.25rem; font-weight: 600; color: var(--text-main);">$0.00
-                                        Used
-                                    </div>
-                                    <div id="puter-quota-text" style="font-size: 0.8rem; color: var(--text-muted);">0%
-                                        of
-                                        $0.50</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="puter-reset-area" class="hidden"
-                        style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; margin-top: 15px;">
-                        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;">AI Model trial
-                            expired? You can create new accounts whenever limits are reached.</p>
-                        <button id="switch-account-link" class="secondary-btn"
-                            style="width: 100%; font-size: 0.85rem; padding: 10px;">
-                            <span class="material-icons-round" style="font-size: 16px;">manage_accounts</span> Reset
-                            Puter AI Session
-                        </button>
-                    </div>
                 </div>
             </div>
         </section>
@@ -482,8 +436,31 @@
                     </div>
                 </div>
 
-                <div style="margin-top: 10px; padding: 12px; background: rgba(255,165,0,0.05); border-radius: 12px; font-size: 0.75rem; color: #fbbf24; text-align: left;">
+                <div style="margin-top: 10px; padding: 12px; background: rgba(255,165,0,0.05); border-radius: 12px; font-size: 0.75rem; color: #fbbf24; text-align: left; margin-bottom: 25px;">
                     <p><b>Note:</b> Puter connection is required to provide the AI models even in BYOK mode.</p>
+                </div>
+
+                <!-- Resource Status Dashboard (Internal to Modal) -->
+                <div id="resource-status-card" class="hidden" style="margin-bottom: 20px; padding: 15px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">Resource Credits</span>
+                        <span id="usage-refresh-time" style="font-size: 0.7rem; color: var(--text-muted);">--</span>
+                    </div>
+                    <div id="puter-usage-bar-container" style="height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; margin-bottom: 10px; overflow: hidden;">
+                        <div id="puter-usage-bar" style="width: 0%; height: 100%; background: #fbbf24; transition: width 0.5s;"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+                        <div id="puter-usage-text" style="font-size: 1rem; font-weight: 700; color: #fff;">$0.00</div>
+                        <div id="puter-quota-text" style="font-size: 0.75rem; color: var(--text-muted);">Quota: $0.50</div>
+                    </div>
+                </div>
+
+                <!-- Reset Area (Internal to Modal) -->
+                <div id="puter-reset-area" class="hidden" style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
+                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 12px;">Quota reached? Create a new session:</p>
+                    <button id="switch-account-link" class="secondary-btn" style="width: 100%; font-size: 0.8rem; padding: 10px; justify-content: center; border-radius: 10px; background: rgba(255,255,255,0.05);">
+                        <span class="material-icons-round" style="font-size: 16px;">restart_alt</span> Reset AI Session
+                    </button>
                 </div>
             </div>
         </div>

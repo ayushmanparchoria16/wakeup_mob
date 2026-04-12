@@ -164,12 +164,10 @@ const buttons = {
     logout: document.getElementById('logout-link'),
     switchAccount: document.getElementById('switch-account-link'),
     connectPuter: document.getElementById('connect-puter-btn'),
-    initByokBtn: document.getElementById('init-byok-btn'),
-    startDemoBtn: document.getElementById('start-demo-btn'),
-    showDevCardBtn: document.getElementById('show-dev-card-btn'),
     changeKeysBtn: document.getElementById('change-keys-btn'),
     upgradePremiumLink: document.getElementById('upgrade-premium-link'),
     validateKey: document.getElementById('validate-key-btn'),
+    openByokModal: document.getElementById('open-byok-modal-btn'),
     // Subscription/UPI
     subscribeMain: document.getElementById('open-subscription-modal-btn'),
     submitUpi: document.getElementById('submit-upi-btn')
@@ -272,12 +270,8 @@ function init() {
         buttons.submitUpi.addEventListener('click', handleUPIPaymentSubmit);
     }
 
-    if (buttons.initByokBtn) {
-        buttons.initByokBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            buttons.initByokBtn.classList.add('hidden');
-            displays.byokSetupArea.classList.remove('hidden');
-        });
+    if (buttons.openByokModal) {
+        buttons.openByokModal.addEventListener('click', openByokModal);
     }
 
     if (inputs.deepgramKey) {
@@ -371,13 +365,7 @@ function init() {
     if (buttons.changeKeysBtn) {
         buttons.changeKeysBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            displays.gatedMeetingArea.classList.add('hidden');
-            displays.onboardingOptions.classList.remove('hidden');
-            buttons.initByokBtn.classList.add('hidden');
-            displays.byokSetupArea.classList.remove('hidden');
-            if (inputs.deepgramKey) {
-                inputs.deepgramKey.focus();
-            }
+            openByokModal();
         });
     }
 
