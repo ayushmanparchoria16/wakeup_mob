@@ -9,7 +9,7 @@ const CONFIG = {
     MIN_DECIBELS: -45, // Threshold for detecting speech
     SILENCE_DELAY_MS: 1200, // How long to wait in silence before sending audio
     AI_PROXY_URL: "https://interviewbold.ayushmanparchoria16.workers.dev",
-    VERSION: "1.0.0", // Current App Version
+    VERSION: "1.0.1", // Current App Version
     GITHUB_REPO: "ayushmanparchoria16/wakeup_website", // Repository source
 };
 
