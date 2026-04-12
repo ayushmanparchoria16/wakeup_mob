@@ -164,55 +164,12 @@
                             </div>
 
                             <!-- Card 3: BYOK (Developer) -->
-                            <div class="onboarding-card dev-card" id="dev-card-options">
+                            <div class="onboarding-card dev-card">
                                 <h3>Bring Your Own Keys (BYOK)</h3>
                                 <p>Free unlimited usage using your own API limits.</p>
-
-                                <button id="init-byok-btn" class="secondary-btn"
-                                    style="width: 100%; justify-content: center; padding: 10px; font-size: 0.9rem;">
+                                <button id="open-byok-modal-btn" class="secondary-btn" onclick="openByokModal()" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.9rem;">
                                     Setup BYOK
                                 </button>
-
-                                <div id="byok-setup-area" class="hidden"
-                                    style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <label style="font-size: 0.8rem; color: var(--text-main);">1. Deepgram
-                                            Key</label>
-                                        <a href="https://console.deepgram.com/signup" target="_blank"
-                                            style="font-size: 0.7rem; color: var(--accent); text-decoration: none;">Get
-                                            a free key &nearr;</a>
-                                    </div>
-                                    <div style="display: flex; gap: 8px; margin-top: 5px;">
-                                        <input type="password" id="deepgram-key-input" placeholder="Paste Key Here"
-                                            style="flex: 1; padding: 8px; font-size: 0.8rem;">
-                                        <button id="validate-key-btn" class="secondary-btn"
-                                            style="padding: 0 10px; font-size: 0.8rem;">Verify</button>
-                                    </div>
-
-                                    <!-- Deepgram Status -->
-                                    <div id="dg-status-container" class="hidden"
-                                        style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-                                        <div style="display: flex; align-items: center; gap: 6px;">
-                                            <div id="dg-indicator"
-                                                style="width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted);">
-                                            </div>
-                                            <span style="font-size: 0.75rem; color: var(--text-muted);">Status:</span>
-                                            <span id="dg-usage"
-                                                style="font-size: 0.75rem; font-weight: 500; color: var(--text-main);">Checking...</span>
-                                        </div>
-                                    </div>
-
-                                    <label
-                                        style="font-size: 0.8rem; color: var(--text-main); display: block; margin-top: 15px;">2.
-                                        Puter Account</label>
-                                    <div id="puter-connect-area" style="margin-top: 5px;">
-                                        <button id="connect-puter-btn" class="secondary-btn"
-                                            style="width: 100%; padding: 8px; font-size: 0.8rem; justify-content: center;">
-                                            <span class="material-icons-round" style="font-size: 14px;">extension</span>
-                                            Connect Puter (Free)
-                                        </button>
-                                    </div>
-                                </div>
                             </div>
 
                         </div>
@@ -478,6 +435,59 @@
     </div>
     
     <div id="toast" class="hidden">Notification</div>
+
+    <!-- NEW: BYOK Setup Modal (Mobile First Bottom Sheet) -->
+    <div id="byok-modal" class="modal-overlay hidden" onclick="if(event.target === this) closeByokModal()">
+        <div class="sub-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h3>BYOK Setup</h3>
+                <button class="close-sheet-btn" onclick="closeByokModal()">✕</button>
+            </div>
+            
+            <div class="sheet-content" style="padding: 20px;">
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 20px;">Use your own API keys for free, unlimited usage.</p>
+                
+                <!-- 1. Deepgram Key -->
+                <div class="input-group" style="margin-bottom: 25px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label style="font-size: 0.85rem; color: var(--text-main);">1. Deepgram API Key</label>
+                        <a href="https://console.deepgram.com/signup" target="_blank" style="font-size: 0.75rem; color: var(--accent); text-decoration: none;">Get a Free Key &nearr;</a>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="password" id="deepgram-key-input" placeholder="Paste Key Here" style="flex: 1; padding: 12px; border-radius: 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff;">
+                        <button id="validate-key-btn" class="secondary-btn" style="padding: 0 15px; border-radius: 12px; font-size: 0.85rem;">Verify</button>
+                    </div>
+                </div>
+
+                <!-- Deepgram Status (Inside Modal) -->
+                <div id="dg-status-container" class="hidden" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 25px; padding: 12px; background: rgba(74, 222, 128, 0.1); border-radius: 12px; border: 1px solid rgba(74, 222, 128, 0.2);">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div id="dg-indicator" style="width: 8px; height: 8px; border-radius: 50%; background: #4ade80;"></div>
+                        <span id="dg-usage" style="font-size: 0.85rem; font-weight: 600; color: #4ade80;">Verified Successfully</span>
+                    </div>
+                </div>
+
+                <!-- 2. Puter Login -->
+                <div class="input-group" style="margin-bottom: 20px;">
+                    <label style="font-size: 0.85rem; color: var(--text-main); display: block; margin-bottom: 12px;">2. AI Account Connection</label>
+                    <div id="puter-connect-area">
+                        <button id="connect-puter-btn" class="secondary-btn" style="width: 100%; padding: 12px; justify-content: center; border-radius: 12px;">
+                            <span class="material-icons-round" style="font-size: 18px;">cloud_sync</span>
+                            Connect Puter (Required)
+                        </button>
+                    </div>
+                    <div id="puter-connected-status" class="hidden" style="display: flex; align-items: center; gap: 10px; color: #4ade80; font-size: 0.85rem; font-weight: 600;">
+                        <span class="material-icons-round">check_circle</span> Puter Connected
+                    </div>
+                </div>
+
+                <div style="margin-top: 10px; padding: 12px; background: rgba(255,165,0,0.05); border-radius: 12px; font-size: 0.75rem; color: #fbbf24; text-align: left;">
+                    <p><b>Note:</b> Puter connection is required to provide the AI models even in BYOK mode.</p>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- NEW: Auto-Update Modal (Premium Glassmorphism) -->
     <div id="update-modal" class="modal-overlay hidden">

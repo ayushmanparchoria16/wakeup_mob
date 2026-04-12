@@ -64,11 +64,24 @@ function closeSubscriptionModal() {
     if (modal) modal.classList.add('hidden');
 }
 
+function openByokModal() {
+    if (!state.currentUser) return showToast("Please login first");
+    closeSubscriptionModal();
+    const modal = document.getElementById('byok-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeByokModal() {
+    const modal = document.getElementById('byok-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
 function openUpiModal() {
     if (!state.currentUser) return showToast("Please login first");
     
-    // Hide sub modal if open
+    // Hide sub/byok modal if open
     closeSubscriptionModal();
+    closeByokModal();
 
     // Pre-fill email
     const upiEmailInput = document.getElementById('upi-email');
@@ -448,21 +461,28 @@ function checkSetupStatus() {
             }
         }
 
-        // Show Start Session if BYOK is ready (Puter is now OPTIONAL for BYOK)
-        if (isDeepgramReady) {
+        // Show Start Session if BOTH Deepgram and Puter are ready (REQUIRED)
+        if (isDeepgramReady && isPuterReady) {
             if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.remove('hidden');
-            // Show BYOK status
+            // Close modal if it was open
+            closeByokModal();
+            // Show BYOK status in modal for next time
             if (displays.dgStatusContainer) displays.dgStatusContainer.classList.remove('hidden');
-            if (buttons.validateKey) {
-                buttons.validateKey.innerHTML = '<span class="material-icons-round" style="font-size: 16px; color: #4ade80;">check_circle</span> Verified';
-                buttons.validateKey.style.borderColor = "#4ade80";
-                buttons.validateKey.style.color = "#4ade80";
-            }
+            const puterStatus = document.getElementById('puter-connected-status');
+            if (puterStatus) puterStatus.classList.remove('hidden');
+            if (displays.puterConnectArea) displays.puterConnectArea.classList.add('hidden');
         } else {
-            // If they aren't premium, they MUST have BYOK or Demo
+            // Need Puter OR Deepgram
             if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.add('hidden');
-            if (!isDeepgramReady && buttons.validateKey) {
-                buttons.validateKey.innerHTML = 'Verify';
+            const puterStatus = document.getElementById('puter-connected-status');
+            if (puterStatus) {
+                if (isPuterReady) {
+                    puterStatus.classList.remove('hidden');
+                    if (displays.puterConnectArea) displays.puterConnectArea.classList.add('hidden');
+                } else {
+                    puterStatus.classList.add('hidden');
+                    if (displays.puterConnectArea) displays.puterConnectArea.classList.remove('hidden');
+                }
             }
         }
     }
