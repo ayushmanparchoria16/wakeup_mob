@@ -2239,14 +2239,58 @@ function showUpdatePopup(version, notes, url) {
     if (versionTag) versionTag.textContent = version;
     if (notesEl) notesEl.textContent = notes || "General improvements and bug fixes.";
     
+    // Reset button state
     if (upgradeBtn) {
+        upgradeBtn.innerHTML = '<span class="material-icons-round">rocket_launch</span> Upgrade Now';
+        upgradeBtn.disabled = false;
         upgradeBtn.onclick = () => {
-            showToast("Starting download...", 3000);
-            window.open(url, '_system');
+            startUpdateFlow(url, upgradeBtn);
         };
     }
 
     if (modal) modal.classList.remove('hidden');
+}
+
+async function startUpdateFlow(url, btn) {
+    const isWindows = !!window.electronAPI;
+    const isAndroid = window.Capacitor && window.Capacitor.platform === 'android';
+
+    if (isWindows && window.electronAPI.downloadUpdate) {
+        // --- Windows Flow ---
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round">downloading</span> Downloading 0%';
+        
+        window.electronAPI.downloadUpdate(url);
+
+        window.electronAPI.onDownloadProgress((progress) => {
+            btn.innerHTML = `<span class="material-icons-round">downloading</span> Downloading ${progress}%`;
+        });
+
+        window.electronAPI.onDownloadComplete((fileName) => {
+            btn.disabled = false;
+            btn.classList.add('pulse-btn');
+            btn.innerHTML = '<span class="material-icons-round">check_circle</span> Install Now';
+            showToast("Download Finished! Click Install Now.");
+            
+            btn.onclick = () => {
+                window.electronAPI.installUpdate();
+            };
+        });
+
+        window.electronAPI.onDownloadError((err) => {
+            btn.disabled = false;
+            btn.innerText = "Retry Upgrade";
+            showToast("Download failed. Try again.");
+        });
+
+    } else if (isAndroid) {
+        // --- Android Flow (Improved) ---
+        showToast("Starting download...", 3000);
+        window.open(url, '_system'); // Browser handoff for APK (Most reliable)
+    } else {
+        // Fallback for Web/Browser
+        window.open(url, '_blank');
+    }
 }
 
 function closeUpdateModal() {
