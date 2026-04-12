@@ -2317,3 +2317,19 @@ function closeUpdateModal() {
     if (modal) modal.classList.add('hidden');
     showToast("Update postponed. You can upgrade on next restart.");
 }
+
+/**
+ * Helper to compare versions (e.g. v1.1.0 vs 1.0.1)
+ */
+function isNewerVersion(latest, current) {
+    if (!latest || !current) return false;
+    const l = latest.replace('v', '').split('.').map(Number);
+    const c = current.replace('v', '').split('.').map(Number);
+    for (let i = 0; i < Math.max(l.length, c.length); i++) {
+        const lv = l[i] || 0;
+        const cv = c[i] || 0;
+        if (lv > cv) return true;
+        if (lv < cv) return false;
+    }
+    return false;
+}
