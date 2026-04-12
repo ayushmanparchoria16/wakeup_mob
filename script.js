@@ -448,8 +448,8 @@ function checkSetupStatus() {
             }
         }
 
-        // Show Start Session if BYOK is ready (and Puter is ready)
-        if (isDeepgramReady && isPuterReady) {
+        // Show Start Session if BYOK is ready (Puter is now OPTIONAL for BYOK)
+        if (isDeepgramReady) {
             if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.remove('hidden');
             // Show BYOK status
             if (displays.dgStatusContainer) displays.dgStatusContainer.classList.remove('hidden');
@@ -459,8 +459,8 @@ function checkSetupStatus() {
                 buttons.validateKey.style.color = "#4ade80";
             }
         } else {
+            // If they aren't premium, they MUST have BYOK or Demo
             if (displays.gatedMeetingArea) displays.gatedMeetingArea.classList.add('hidden');
-            // If they are not ready, revert button label if no key
             if (!isDeepgramReady && buttons.validateKey) {
                 buttons.validateKey.innerHTML = 'Verify';
             }
@@ -1874,11 +1874,11 @@ async function updateResourceStatus() {
     const now = new Date();
     refreshTime.textContent = `Updated: ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
-    // 1. Fetch Deepgram Usage
-    if (state.deepgramKey) {
+    // 1. Fetch Deepgram Usage (ONLY for Premium/Shared keys, not private BYOK keys)
+    const isPremium = state.currentUser?.SubscriptionStatus === 'Active';
+    if (state.deepgramKey && isPremium) {
         fetchDeepgramUsage().then(usage => {
             if (usage) {
-                // Simplified status display
                 if (usage.status === 403 || usage.remaining === 0) {
                     dgDisplay.textContent = "Limited Access";
                     if (dgIndicator) dgIndicator.style.background = 'var(--text-muted)';
@@ -1887,10 +1887,14 @@ async function updateResourceStatus() {
                     if (dgIndicator) dgIndicator.style.background = '#4ade80';
                 }
             } else {
-                dgDisplay.textContent = "Error";
-                if (dgIndicator) dgIndicator.style.background = 'var(--danger)';
+                // Ignore silent errors for BYOK
+                dgDisplay.textContent = "Offline";
             }
         });
+    } else if (state.deepgramKey) {
+        // BYOK Mode: Just show "Connected" if key exists
+        dgDisplay.textContent = "BYOK Active";
+        if (dgIndicator) dgIndicator.style.background = '#4ade80';
     } else {
         dgDisplay.textContent = "Key Required";
         if (dgIndicator) dgIndicator.style.background = 'var(--text-muted)';
