@@ -51,6 +51,66 @@ const state = {
     pendingScreenshots: []
 };
 
+// --- Mobile & Modal Controls ---
+function openSubscriptionModal() {
+    const modal = document.getElementById('subscription-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeSubscriptionModal() {
+    const modal = document.getElementById('subscription-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function openUpiModal() {
+    if (!state.currentUser) return showToast("Please login first");
+    
+    // Hide sub modal if open
+    closeSubscriptionModal();
+
+    // Pre-fill email
+    const upiEmailInput = document.getElementById('upi-email');
+    if (upiEmailInput) upiEmailInput.value = state.currentUser.email;
+
+    // Expiry calculation
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + 31);
+    const options = { day: 'numeric', month: 'long', year: 'numeric' };
+    const formatted = expiryDate.toLocaleDateString('en-IN', options);
+    const el = document.getElementById('upi-expiry-date');
+    if (el) el.textContent = formatted;
+
+    const upiModal = document.getElementById('upi-modal');
+    if (upiModal) upiModal.classList.remove('hidden');
+}
+
+function switchMeetingTab(tabId) {
+    const panels = {
+        ai: document.getElementById('ai-panel'),
+        transcript: document.getElementById('transcript-panel')
+    };
+    const tabs = {
+        ai: document.getElementById('tab-ai'),
+        transcript: document.getElementById('tab-transcript')
+    };
+
+    // Update active classes
+    Object.keys(panels).forEach(key => {
+        if (key === tabId) {
+            panels[key].classList.add('active');
+            tabs[key].classList.add('active');
+        } else {
+            panels[key].classList.remove('active');
+            tabs[key].classList.remove('active');
+        }
+    });
+
+    // Scroll to bottom of new active feed
+    if (tabId === 'ai') scrollToBottom(document.getElementById('ai-feed'));
+    else scrollToBottom(document.getElementById('transcript-feed'));
+}
+
+
 // --- DOM Elements ---
 const screens = {
     auth: document.getElementById('auth-screen'),
@@ -95,8 +155,8 @@ const buttons = {
     changeKeysBtn: document.getElementById('change-keys-btn'),
     upgradePremiumLink: document.getElementById('upgrade-premium-link'),
     validateKey: document.getElementById('validate-key-btn'),
-    showUpiForm: document.getElementById('show-upi-form-btn'),
-    closeUpiModal: document.getElementById('close-upi-modal'),
+    // Subscription/UPI
+    subscribeMain: document.getElementById('open-subscription-modal-btn'),
     submitUpi: document.getElementById('submit-upi-btn')
 };
 
@@ -137,9 +197,9 @@ function init() {
     // Initialize Paddle
     try {
         if (typeof Paddle !== 'undefined') {
-            Paddle.Initialize({ 
+            Paddle.Initialize({
                 token: "live_7bd4c07bde83385e5960f2c8cda",
-                environment: "production" 
+                environment: "production"
             });
         }
     } catch (err) {
@@ -191,32 +251,6 @@ function init() {
 
     if (buttons.validateKey) {
         buttons.validateKey.addEventListener('click', handleKeyValidation);
-    }
-
-    // --- UPI Payment Listeners ---
-    if (buttons.showUpiForm) {
-        buttons.showUpiForm.addEventListener('click', () => {
-            if (!state.currentUser) return showToast("Please login first");
-
-            // Pre-fill email
-            document.getElementById('upi-email').value = state.currentUser.email;
-
-            // Calculate and display expiry (31 days from today)
-            const expiryDate = new Date();
-            expiryDate.setDate(expiryDate.getDate() + 31);
-            const options = { day: 'numeric', month: 'long', year: 'numeric' };
-            const formatted = expiryDate.toLocaleDateString('en-IN', options);
-            const el = document.getElementById('upi-expiry-date');
-            if (el) el.textContent = formatted;
-
-            displays.upiModal.classList.remove('hidden');
-        });
-    }
-
-    if (buttons.closeUpiModal) {
-        buttons.closeUpiModal.addEventListener('click', () => {
-            displays.upiModal.classList.add('hidden');
-        });
     }
 
     if (buttons.submitUpi) {
@@ -1986,8 +2020,8 @@ function parseMarkdown(text) {
 
     // 1. Initial cleanup: handle basic characters
     let html = text.replace(/&/g, "&amp;")
-                   .replace(/</g, "&lt;")
-                   .replace(/>/g, "&gt;");
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
 
     // 2. Multi-line Code Blocks (```language\n code \n ```)
     // Using a non-greedy catch-all to correctly identify segments
@@ -2027,9 +2061,9 @@ function openPaddleCheckout() {
     }
 
     const userEmail = state.currentUser ? state.currentUser.email : "";
-    
+
     // NOTE: Replace 'pri_placeholder' with your actual Paddle Price ID from the dashboard
-    const PRICE_ID = "pri_01knh7qwtvzdkhc4qhsk700vmk"; 
+    const PRICE_ID = "pri_01knh7qwtvzdkhc4qhsk700vmk";
 
     if (PRICE_ID === "pri_placeholder") {
         showToast("Checkout is being configured. Please check back in a few minutes.");
@@ -2039,7 +2073,7 @@ function openPaddleCheckout() {
 
     // Detect if we're inside the Electron EXE or Android Capacitor App
     const isNativeApp = !!(window.electronAPI || (window.Capacitor && window.Capacitor.platform !== 'web'));
-    
+
     Paddle.Checkout.open({
         items: [
             {
@@ -2053,7 +2087,7 @@ function openPaddleCheckout() {
         settings: {
             // Use 'hosted' for native apps to trigger system browser, 
             // use 'overlay' for regular web users.
-            displayMode: isNativeApp ? "hosted" : "overlay", 
+            displayMode: isNativeApp ? "hosted" : "overlay",
             theme: "dark",
             locale: "en"
         }
@@ -2095,7 +2129,7 @@ async function handleUPIPaymentSubmit() {
         if (data.status === 'success') {
             showToast(data.message, 5000);
             displays.upiModal.classList.add('hidden');
-            
+
             // Increment local expiry display immediately if possible
             if (state.currentUser) {
                 const newExpiry = new Date();

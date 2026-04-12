@@ -217,7 +217,8 @@ body {
     max-width: 400px;
     text-align: center;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-    margin: auto 0; /* Helps center vertically within scrolling container */
+    margin: auto 0;
+    /* Helps center vertically within scrolling container */
 }
 
 .glass-card h1 {
@@ -552,7 +553,8 @@ input:focus {
     border-radius: 0 16px 16px 16px;
     padding: 16px;
     margin-bottom: 16px;
-    font-size: 0.95rem; /* Improved basic readability */
+    font-size: 0.95rem;
+    /* Improved basic readability */
     line-height: 1.6;
     position: relative;
     animation: slideRight 0.4s ease;
@@ -599,12 +601,15 @@ input:focus {
 }
 
 .ai-message .code-box {
-    background: #0d021c; /* Deeper purple terminal background */
-    border: 1px solid #7c3aed; /* Purple border */
+    background: #0d021c;
+    /* Deeper purple terminal background */
+    border: 1px solid #7c3aed;
+    /* Purple border */
     padding: 18px;
     border-radius: 8px;
     font-family: 'Consolas', 'Monaco', monospace;
-    font-size: 1.1rem; /* Much bigger code font */
+    font-size: 1.1rem;
+    /* Much bigger code font */
     margin: 16px 0;
     overflow-x: auto;
     color: #ffffff;
@@ -616,7 +621,7 @@ input:focus {
     border: none !important;
     padding: 0 !important;
     margin: 0 !important;
-    white-space: pre !important; 
+    white-space: pre !important;
     font-size: inherit;
     color: inherit;
 }
@@ -959,6 +964,7 @@ input:focus {
     background: rgba(0, 0, 0, 0.6);
     box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
 }
+
 /* Onboarding Cards */
 .onboarding-cards-grid {
     display: grid;
@@ -1034,7 +1040,8 @@ input:focus {
 .unified-premium-card {
     border-color: rgba(139, 92, 246, 0.4);
     background: linear-gradient(145deg, rgba(139, 92, 246, 0.07) 0%, rgba(0, 140, 255, 0.04) 100%);
-    padding: 20px;
+    padding: 24px;
+    height: 100%;
 }
 
 .pay-method-row {
@@ -1147,7 +1154,7 @@ input:focus {
 }
 
 
-/* UPI Payment Modal & Cards */
+/* Modal Base Overlay */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -1155,8 +1162,9 @@ input:focus {
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(10px);
-    z-index: 2000;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 3000;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1171,145 +1179,381 @@ input:focus {
     display: none !important;
 }
 
-.upi-modal-card {
-    max-width: 700px;
-    width: 100%;
-    padding: 30px;
+/* Compact Minimalist UPI Modal */
+.upi-compact-card {
+    max-width: 540px;
+    width: 95%;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: #0f172a;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-    border-radius: 20px;
-    background: rgba(15, 23, 42, 0.95);
-    position: relative;
-    animation: fadeIn 0.3s ease;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+    border-radius: 16px;
+    padding: 0;
+    /* Hide scrollbar but keep functionality */
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
 }
 
-.upi-content-grid {
+/* Chrome, Safari and Opera */
+.upi-compact-card::-webkit-scrollbar {
+    display: none;
+}
+
+.upi-compact-grid {
     display: grid;
-    grid-template-columns: 240px 1fr;
-    gap: 30px;
-    margin-top: 10px;
+    grid-template-columns: 200px 1fr;
+    min-height: 360px;
 }
 
-.upi-qr-area {
-    text-align: center;
-    padding-right: 30px;
-    border-right: 1px solid rgba(255, 255, 255, 0.1);
+.upi-left-panel {
+    background: rgba(0, 0, 0, 0.25);
+    padding: 24px 20px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    text-align: center;
 }
 
-.upi-qr-img {
-    width: 180px;
-    height: 180px;
+.compact-qr-box {
     background: white;
-    padding: 10px;
-    border-radius: 12px;
+    border-radius: 8px;
     margin-bottom: 15px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-}
-
-.upi-id-text {
-    font-size: 0.85rem;
-    color: var(--text-muted);
-    margin: 0;
-}
-
-.upi-id-text span {
-    display: block;
-    color: var(--primary);
-    font-weight: 600;
-    margin-top: 4px;
-    word-break: break-all;
-    font-size: 0.9rem;
-}
-
-.upi-instruction {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    margin-top: 10px;
-    opacity: 0.7;
-}
-
-.upi-notice {
+    width: 140px;
+    height: 140px;
     display: flex;
     align-items: center;
-    gap: 10px;
-    background: rgba(0, 140, 255, 0.1);
-    color: #4da6ff;
-    padding: 14px;
-    border-radius: 10px;
-    font-size: 0.85rem;
-    margin-top: 20px;
-    border: 1px solid rgba(0, 140, 255, 0.2);
-    line-height: 1.4;
+    justify-content: center;
+    overflow: hidden; /* This will crop the zoomed image */
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.upi-notice .material-icons-round {
-    font-size: 20px;
-    flex-shrink: 0;
+.upi-qr-mini {
+    width: 210px; /* Scale up to zoom in */
+    height: 210px;
+    max-width: none;
+    max-height: none;
+    object-fit: cover;
+    object-position: center 55%; /* Slightly adjust to center the actual QR block */
 }
 
-@media (max-width: 650px) {
-    .upi-content-grid {
-        grid-template-columns: 1fr;
-    }
-    .upi-qr-area {
-        border-right: none;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        padding-right: 0;
-        padding-bottom: 20px;
-    }
-    .upi-modal-card {
-        padding: 20px;
-        max-height: 90vh;
-        overflow-y: auto;
-    }
+.compact-price-pill {
+    background: #4ade80;
+    color: #064e3b;
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 30px;
+    margin-bottom: 8px;
 }
 
-/* UPI Modal — Amount & Validity Box */
-.upi-amount-box {
-    margin-top: 14px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
-    padding: 12px 14px;
-    width: 100%;
+.compact-upi-id {
+    font-size: 0.7rem;
+    color: var(--text-main);
+    font-weight: 600;
+    word-break: break-all;
+}
+
+.compact-expiry-hint {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    margin-top: 6px;
+}
+
+.upi-right-panel {
+    padding: 24px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
 }
 
-.upi-amount-row {
+.compact-form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.compact-form-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: #fff;
+    opacity: 0.9;
+}
+
+.close-minimal-btn {
+    background: rgba(255,255,255,0.05);
+    border: none;
+    color: var(--text-muted);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
-    gap: 10px;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.8rem;
 }
 
-.upi-amount-value {
-    font-size: 1.6rem;
-    font-weight: 800;
-    color: #4ade80;
-    line-height: 1;
+.minimal-input-group {
+    margin-bottom: 12px;
 }
 
-.upi-amount-label {
-    font-size: 0.72rem;
+.minimal-input-group input {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 12px;
+    color: #fff;
+    font-size: 0.85rem;
+}
+
+.minimal-input-group input:focus {
+    border-color: var(--primary);
+    background: rgba(255, 255, 255, 0.08);
+    outline: none;
+}
+
+.minimal-submit-btn {
+    width: 100%;
+    margin-top: auto;
+    padding: 14px;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.minimal-tip {
+    font-size: 0.65rem;
     color: var(--text-muted);
-    margin-top: 2px;
+    text-align: center;
+    margin-top: 10px;
+    opacity: 0.6;
 }
 
-.upi-validity-row {
+@media (max-width: 500px) {
+    .upi-compact-grid {
+        grid-template-columns: 1fr;
+    }
+    .upi-left-panel {
+        border-right: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+}
+
+/* Subscription Bottom Sheet */
+.sub-bottom-sheet {
+    background: #0f172a;
+    width: 100%;
+    max-width: 450px;
+    border-radius: 20px 20px 0 0;
+    padding: 25px;
+    position: relative;
+    padding-bottom: 40px;
+    transform: translateY(100%);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    max-height: 90vh;
+    overflow-y: auto;
+    /* Hide scrollbar */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.sub-bottom-sheet::-webkit-scrollbar {
+    display: none;
+}
+
+.modal-overlay:not(.hidden) .sub-bottom-sheet {
+    transform: translateY(0);
+}
+
+.sheet-handle {
+    width: 40px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    margin: -10px auto 15px auto;
+}
+
+.sheet-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.sheet-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+.close-sheet-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: none;
+    color: var(--text-muted);
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.pay-options-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.pay-sheet-card {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    border-top: 1px solid rgba(255,255,255,0.06);
-    padding-top: 8px;
+    gap: 15px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
 }
 
-.upi-validity-row strong {
+.pay-sheet-card:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--primary);
+    transform: scale(1.02);
+}
+
+.pay-sheet-icon {
+    width: 45px;
+    height: 45px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pay-sheet-icon .material-icons-round {
+    font-size: 24px;
+}
+
+.pay-sheet-info {
+    flex: 1;
+}
+
+.pay-sheet-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 2px;
+}
+
+.pay-sheet-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.pay-sheet-price {
+    font-weight: 700;
     color: var(--text-main);
+    font-size: 1.1rem;
+}
+
+/* Meeting Tabs - Mobile Only */
+.meeting-tabs {
+    display: none;
+    background: rgba(15, 23, 42, 0.5);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 0 10px;
+}
+
+.meeting-tabs button {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    padding: 15px 10px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    position: relative;
+    cursor: pointer;
+}
+
+.meeting-tabs button.active {
+    color: var(--primary);
+}
+
+.meeting-tabs button.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 10px;
+    right: 10px;
+    height: 3px;
+    background: var(--primary);
+    border-radius: 2px 2px 0 0;
+}
+
+@media (min-width: 769px) {
+    .sub-bottom-sheet {
+        border-radius: 24px;
+        transform: scale(0.9);
+        opacity: 0;
+        transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        margin: auto;
+    }
+    
+    .modal-overlay:not(.hidden) .sub-bottom-sheet {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@media (max-width: 768px) {
+    .split-view {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .meeting-tabs {
+        display: flex;
+        justify-content: space-around;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        backdrop-filter: blur(10px);
+    }
+
+    .panel {
+        display: none; /* Hide panels by default on mobile */
+        border: none;
+    }
+
+    .panel.active {
+        display: flex;
+    }
+
+    .ai-panel {
+        background: transparent;
+    }
+
+    .panel-header {
+        display: none; /* Hide panel headers on mobile as we use tabs */
+    }
+
+    .app-header {
+        padding: 10px 15px;
+    }
+
+    .app-header h2 {
+        font-size: 1rem;
+    }
+    
+    .sheet-content {
+        max-height: 70vh;
+        overflow-y: auto;
+        /* Hide scrollbar */
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+    .sheet-content::-webkit-scrollbar {
+        display: none;
+    }
 }

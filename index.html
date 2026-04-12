@@ -98,355 +98,396 @@
                     <h1>Interviewbold</h1>
                     <p class="subtitle">Welcome, <span id="user-display-name"
                             style="color:var(--text-main); font-weight:600;">User</span>!
-                        <span id="premium-badge" class="hidden" style="margin-left:8px; font-size: 0.7rem; background: linear-gradient(135deg, var(--primary) 0%, #7c3aed 100%); color: white; padding: 2px 8px; border-radius: 12px; font-weight: 700; vertical-align: middle; box-shadow: 0 0 10px rgba(139, 92, 246, 0.4);">PREMIUM</span>
+                        <span id="premium-badge" class="hidden"
+                            style="margin-left:8px; font-size: 0.7rem; background: linear-gradient(135deg, var(--primary) 0%, #7c3aed 100%); color: white; padding: 2px 8px; border-radius: 12px; font-weight: 700; vertical-align: middle; box-shadow: 0 0 10px rgba(139, 92, 246, 0.4);">PREMIUM</span>
                         <br>
-                        <span id="premium-expiry" class="hidden" style="font-size: 0.75rem; color: var(--primary); font-weight: 600; display: inline-block; margin-top: 5px;"></span>
+                        <span id="premium-expiry" class="hidden"
+                            style="font-size: 0.75rem; color: var(--primary); font-weight: 600; display: inline-block; margin-top: 5px;"></span>
                         <br>
                         <a href="#" id="logout-link"
                             style="color:var(--danger); text-decoration:none; font-size:0.8rem; display: inline-block; margin-top: 5px;">Logout</a>
                     </p>
 
-                <!-- Topic Input (For all tiers) -->
-                <div class="input-group" style="text-align: left; margin-top: 20px;">
-                    <label>Interview Topic / Details</label>
-                    <input type="text" id="topic-input" placeholder="e.g. Java Backend Developer Interview">
-                </div>
-
-                <!-- Gated Meeting Setup (Premium/BYOK Start Button) -->
-                <div id="gated-meeting-area" class="hidden" style="margin-top: 20px;">
-                    <div class="controls-start" style="justify-content: center;">
-                        <button id="start-btn" class="primary-btn">
-                            <span class="icon">▶</span> Start Session
-                        </button>
+                    <!-- Topic Input (For all tiers) -->
+                    <div class="input-group" style="text-align: left; margin-top: 20px;">
+                        <label>Interview Topic / Details</label>
+                        <input type="text" id="topic-input" placeholder="e.g. Java Backend Developer Interview">
                     </div>
-                    
-                    <div id="active-session-options" style="display: flex; justify-content: center; gap: 15px; margin-top: 15px;">
-                        <a href="#" id="change-keys-btn" style="font-size: 0.75rem; color: var(--text-muted); text-decoration: none; border-bottom: 1px dotted rgba(255,255,255,0.3);">⚙️ Change API Keys</a>
-                        <a href="javascript:void(0)" onclick="openPaddleCheckout()" class="nav-btn" style="font-size: 0.75rem; color: var(--primary); text-decoration: none;">💎 Upgrade to Premium</a>
-                    </div>
-                </div>
 
-                <!-- NEW: 3-Tier Setup Options -->
-                <div id="onboarding-options" class="hidden" style="margin-top: 20px;">
-                    <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom: 15px;">Choose how you want to use Interviewbold:</p>
-                    
-                    <div class="onboarding-cards-grid">
-                        
-                        <!-- Unified Subscription Card -->
-                        <div class="onboarding-card unified-premium-card">
-                            <div class="card-badge">SUBSCRIBE MONTHLY</div>
-                            <h3>Pro Subscription</h3>
-
-                            <!-- Method 1: International / Paddle -->
-                            <div class="pay-method-row">
-                                <div class="pay-method-label">
-                                    <span class="material-icons-round" style="font-size:16px; color: var(--text-muted);">credit_card</span>
-                                    <span>Card or PayPal</span>
-                                </div>
-                                <div class="pay-method-price">
-                                    <span class="price-old">$29</span>
-                                    <span class="price-new">$5.80<span class="price-period">/mo</span></span>
-                                </div>
-                                <div class="pay-method-note">Use code <strong>LAUNCH80</strong> for 80% off at checkout</div>
-                                <button onclick="openPaddleCheckout()" class="primary-btn pay-method-btn">
-                                    Pay via Card / PayPal
-                                </button>
-                            </div>
-
-                            <!-- Divider -->
-                            <div class="pay-method-divider"><span>or</span></div>
-
-                            <!-- Method 2: UPI India -->
-                            <div class="pay-method-row upi-method-row">
-                                <div class="pay-method-label">
-                                    <span class="material-icons-round" style="font-size:16px; color: #008cff;">qr_code</span>
-                                    <span>Direct UPI Pay</span>
-                                    <span class="india-tag">Popular in India</span>
-                                </div>
-                                <div class="pay-method-price">
-                                    <span class="price-new" style="color: #4da6ff;">₹500<span class="price-period">/mo</span></span>
-                                </div>
-                                <div class="pay-method-note">Verify & activate in under 1 hour</div>
-                                <button id="show-upi-form-btn" class="secondary-btn pay-method-btn upi-pay-btn">
-                                    Pay via UPI
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <!-- Card 2: Skip & Try Demo -->
-                        <div class="onboarding-card demo-card">
-                            <h3>Try Demo</h3>
-                            <p>Free 5 questions per session to test it out.</p>
-                            <button id="start-demo-btn" class="secondary-btn" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.9rem;">
-                                Start 5-Q Demo
+                    <!-- Gated Meeting Setup (Premium/BYOK Start Button) -->
+                    <div id="gated-meeting-area" class="hidden" style="margin-top: 20px;">
+                        <div class="controls-start" style="justify-content: center;">
+                            <button id="start-btn" class="primary-btn">
+                                <span class="icon">▶</span> Start Session
                             </button>
                         </div>
 
-                        <!-- Card 3: BYOK (Developer) -->
-                        <div class="onboarding-card dev-card" id="dev-card-options">
-                            <h3>Bring Your Own Keys (BYOK)</h3>
-                            <p>Free unlimited usage using your own API limits.</p>
-                            
-                            <button id="init-byok-btn" class="secondary-btn" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.9rem;">
-                                Setup BYOK
-                            </button>
+                        <div id="active-session-options"
+                            style="display: flex; justify-content: center; gap: 15px; margin-top: 15px;">
+                            <a href="#" id="change-keys-btn"
+                                style="font-size: 0.75rem; color: var(--text-muted); text-decoration: none; border-bottom: 1px dotted rgba(255,255,255,0.3);">⚙️
+                                Change API Keys</a>
+                            <a href="javascript:void(0)" onclick="openPaddleCheckout()" class="nav-btn"
+                                style="font-size: 0.75rem; color: var(--primary); text-decoration: none;">💎 Upgrade to
+                                Premium</a>
+                        </div>
+                    </div>
 
-                            <div id="byok-setup-area" class="hidden" style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <label style="font-size: 0.8rem; color: var(--text-main);">1. Deepgram Key</label>
-                                    <a href="https://console.deepgram.com/signup" target="_blank" style="font-size: 0.7rem; color: var(--accent); text-decoration: none;">Get a free key &nearr;</a>
-                                </div>
-                                <div style="display: flex; gap: 8px; margin-top: 5px;">
-                                    <input type="password" id="deepgram-key-input" placeholder="Paste Key Here" style="flex: 1; padding: 8px; font-size: 0.8rem;">
-                                    <button id="validate-key-btn" class="secondary-btn" style="padding: 0 10px; font-size: 0.8rem;">Verify</button>
+                    <!-- NEW: 3-Tier Setup Options -->
+                    <div id="onboarding-options" class="hidden" style="margin-top: 20px;">
+                        <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom: 15px;">Choose how you want
+                            to use Interviewbold:</p>
+
+                        <div class="onboarding-cards-grid">
+
+                            <!-- Unified Subscription Card -->
+                            <div class="onboarding-card unified-premium-card" style="padding: 18px; display: flex; flex-direction: column; justify-content: space-between;">
+                                <div class="card-badge">SUBSCRIBE MONTHLY</div>
+                                <div>
+                                    <h3>Pro Subscription</h3>
+                                    <p style="margin-bottom: 20px; font-size: 0.85rem;">Unlimited AI sessions, visual analysis & premium models.</p>
                                 </div>
                                 
-                                <!-- Deepgram Status -->
-                                <div id="dg-status-container" class="hidden" style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-                                    <div style="display: flex; align-items: center; gap: 6px;">
-                                        <div id="dg-indicator" style="width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted);"></div>
-                                        <span style="font-size: 0.75rem; color: var(--text-muted);">Status:</span>
-                                        <span id="dg-usage" style="font-size: 0.75rem; font-weight: 500; color: var(--text-main);">Checking...</span>
+                                <button id="open-subscription-modal-btn" class="primary-btn" onclick="openSubscriptionModal()" style="width: 100%; justify-content: center; padding: 12px; font-size: 0.95rem;">
+                                    Subscribe Now
+                                </button>
+                            </div>
+
+                            <!-- Card 2: Skip & Try Demo -->
+                            <div class="onboarding-card demo-card">
+                                <h3>Try Demo</h3>
+                                <p>Free 5 questions per session to test it out.</p>
+                                <button id="start-demo-btn" class="secondary-btn"
+                                    style="width: 100%; justify-content: center; padding: 10px; font-size: 0.9rem;">
+                                    Start 5-Q Demo
+                                </button>
+                            </div>
+
+                            <!-- Card 3: BYOK (Developer) -->
+                            <div class="onboarding-card dev-card" id="dev-card-options">
+                                <h3>Bring Your Own Keys (BYOK)</h3>
+                                <p>Free unlimited usage using your own API limits.</p>
+
+                                <button id="init-byok-btn" class="secondary-btn"
+                                    style="width: 100%; justify-content: center; padding: 10px; font-size: 0.9rem;">
+                                    Setup BYOK
+                                </button>
+
+                                <div id="byok-setup-area" class="hidden"
+                                    style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <label style="font-size: 0.8rem; color: var(--text-main);">1. Deepgram
+                                            Key</label>
+                                        <a href="https://console.deepgram.com/signup" target="_blank"
+                                            style="font-size: 0.7rem; color: var(--accent); text-decoration: none;">Get
+                                            a free key &nearr;</a>
+                                    </div>
+                                    <div style="display: flex; gap: 8px; margin-top: 5px;">
+                                        <input type="password" id="deepgram-key-input" placeholder="Paste Key Here"
+                                            style="flex: 1; padding: 8px; font-size: 0.8rem;">
+                                        <button id="validate-key-btn" class="secondary-btn"
+                                            style="padding: 0 10px; font-size: 0.8rem;">Verify</button>
+                                    </div>
+
+                                    <!-- Deepgram Status -->
+                                    <div id="dg-status-container" class="hidden"
+                                        style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <div id="dg-indicator"
+                                                style="width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted);">
+                                            </div>
+                                            <span style="font-size: 0.75rem; color: var(--text-muted);">Status:</span>
+                                            <span id="dg-usage"
+                                                style="font-size: 0.75rem; font-weight: 500; color: var(--text-main);">Checking...</span>
+                                        </div>
+                                    </div>
+
+                                    <label
+                                        style="font-size: 0.8rem; color: var(--text-main); display: block; margin-top: 15px;">2.
+                                        Puter Account</label>
+                                    <div id="puter-connect-area" style="margin-top: 5px;">
+                                        <button id="connect-puter-btn" class="secondary-btn"
+                                            style="width: 100%; padding: 8px; font-size: 0.8rem; justify-content: center;">
+                                            <span class="material-icons-round" style="font-size: 14px;">extension</span>
+                                            Connect Puter (Free)
+                                        </button>
                                     </div>
                                 </div>
-                                
-                                <label style="font-size: 0.8rem; color: var(--text-main); display: block; margin-top: 15px;">2. Puter Account</label>
-                                <div id="puter-connect-area" style="margin-top: 5px;">
-                                    <button id="connect-puter-btn" class="secondary-btn" style="width: 100%; padding: 8px; font-size: 0.8rem; justify-content: center;">
-                                        <span class="material-icons-round" style="font-size: 14px;">extension</span> Connect Puter (Free)
-                                    </button>
+                            </div>
+
+                        </div>
+                    </div>
+
+
+                    <!-- Resource Status Dashboard (Puter Only Now) -->
+                    <div id="resource-status-card" class="glass-card usage-card hidden"
+                        style="margin-top: 20px; padding: 20px; text-align: left; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05);">
+                        <div
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                            <span
+                                style="font-size: 0.95rem; font-weight: 500; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                                Puter Resources <span class="material-icons-round"
+                                    style="font-size: 16px; color: var(--text-muted); opacity: 0.5;">chevron_right</span>
+                            </span>
+                            <span id="usage-refresh-time"
+                                style="font-size: 0.75rem; color: var(--text-muted); opacity: 0.7;">Updated: --</span>
+                        </div>
+
+                        <!-- Puter Usage (Primary) -->
+                        <div style="margin-bottom: 0px;">
+                            <div id="puter-usage-container">
+                                <div
+                                    style="height: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 12px; overflow: hidden;">
+                                    <div id="puter-usage-bar"
+                                        style="width: 0%; height: 100%; background: linear-gradient(90deg, #f59e0b, #fbbf24); border-radius: 6px; transition: width 0.5s ease;">
+                                    </div>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 2px;">
+                                    <div id="puter-usage-text"
+                                        style="font-size: 1.25rem; font-weight: 600; color: var(--text-main);">$0.00
+                                        Used
+                                    </div>
+                                    <div id="puter-quota-text" style="font-size: 0.8rem; color: var(--text-muted);">0%
+                                        of
+                                        $0.50</div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <div id="puter-reset-area" class="hidden"
+                        style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; margin-top: 15px;">
+                        <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;">AI Model trial
+                            expired? You can create new accounts whenever limits are reached.</p>
+                        <button id="switch-account-link" class="secondary-btn"
+                            style="width: 100%; font-size: 0.85rem; padding: 10px;">
+                            <span class="material-icons-round" style="font-size: 16px;">manage_accounts</span> Reset
+                            Puter AI Session
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- Screen 2: Meeting Interface -->
+        <section id="meeting-screen" class="screen">
+            <header class="app-header">
+                <div class="header-info">
+                    <div class="live-indicator">
+                        <span class="blob"></span> LIVE
+                    </div>
+                    <h2 id="display-topic" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;">Meeting Topic</h2>
+                </div>
+                <button id="end-session-btn" class="danger-btn-sm">End Session</button>
+            </header>
+
+            <nav id="meeting-tabs" class="meeting-tabs">
+                <button id="tab-ai" class="active" onclick="switchMeetingTab('ai')">AI Insights</button>
+                <button id="tab-transcript" onclick="switchMeetingTab('transcript')">Transcript</button>
+            </nav>
+
+            <main class="split-view">
+                <!-- AI Suggestions Panel (Now Left) -->
+                <div id="ai-panel" class="panel ai-panel active">
+                    <div class="panel-header">
+                        <span class="material-icons-round">auto_awesome</span> AI Insights
+                    </div>
+                    <div id="ai-feed" class="scroll-content">
+                        <div class="ai-welcome">AI is listening...</div>
+                    </div>
+                </div>
+
+                <!-- Transcript Feed (Now Right) -->
+                <div id="transcript-panel" class="panel transcript-panel">
+                    <div class="panel-header">
+                        <span class="material-icons-round">record_voice_over</span>
+                        <span style="flex: 1;">Live Transcript</span>
+                        <button id="quick-reply-meeting-btn" class="header-action-btn" title="Quick Reply">
+                            <span class="material-icons-round">bolt</span>
+                        </button>
+                    </div>
+                    <div id="transcript-feed" class="scroll-content">
+                        <p class="placeholder-text">Waiting for speech...</p>
+                    </div>
+
+                    <div id="staged-screenshots-container"
+                        style="display: flex; gap: 8px; padding: 2px 8px; min-height: 0; overflow-x: auto; margin-top: auto;">
+                    </div>
+
+                    <!-- Mic Status / Visualization -->
+                    <div class="audio-visualizer">
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                    </div>
+                </div>
+            </main>
+
+            <footer class="controls">
+
+                <!-- Center Mic -->
+                <button id="mic-toggle-btn" class="fab" title="Answer Now">
+                    <span class="material-icons-round">mic</span>
+                </button>
+
+                <!-- Status Text (absolute or moved) -->
+                <div class="status-stack">
+                    <div id="vad-status" class="vad-badge hidden">VAD: Waiting</div>
+                    <div id="status-text" class="status-overlay">Listening...</div>
+                </div>
+            </footer>
+        </section>
+
+        <!-- Screen 3: Summary / End -->
+        <section id="end-screen" class="screen">
+            <div class="glass-card end-card">
+                <h2>Meeting Ended</h2>
+                <div class="stats">
+                    <div class="stat-item">
+                        <span class="label">Transcript Length</span>
+                        <span id="stat-words" class="value">0 words</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="label">AI Insights</span>
+                        <span id="stat-insights" class="value">0 generated</span>
+                    </div>
+                </div>
+
+                <div id="feedback-section" class="feedback-section">
+                    <p class="feedback-label">How was your session?</p>
+                    <div class="star-rating" id="star-rating">
+                        <span class="material-icons-round star" data-value="1">star_outline</span>
+                        <span class="material-icons-round star" data-value="2">star_outline</span>
+                        <span class="material-icons-round star" data-value="3">star_outline</span>
+                        <span class="material-icons-round star" data-value="4">star_outline</span>
+                        <span class="material-icons-round star" data-value="5">star_outline</span>
+                    </div>
+                    <textarea id="feedback-comment" placeholder="Any issues or suggestions?"
+                        class="feedback-input"></textarea>
+                    <button id="submit-feedback-btn" class="secondary-btn" style="margin-top: 10px; width: 100%;">Submit
+                        Feedback</button>
+                </div>
+
+                <div class="action-buttons">
+                    <button id="download-btn" class="secondary-btn">
+                        <span class="material-icons-round">download</span> Download Transcript
+                    </button>
+                    <button id="clear-exit-btn" class="primary-btn">
+                        <span class="material-icons-round">restart_alt</span> Clear & Exit
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- COMPACT MINIMALIST UPI MODAL -->
+        <div id="upi-modal" class="modal-overlay hidden">
+            <div class="glass-card upi-compact-card">
+                <div class="upi-compact-grid">
+                    <!-- Left: QR & Price -->
+                    <div class="upi-left-panel">
+                        <div class="compact-qr-box">
+                            <img src="assets/upi_qr.png" alt="UPI QR" class="upi-qr-mini">
+                        </div>
+                        <div class="compact-price-pill">₹500 / mo</div>
+                        <div class="compact-upi-id">akmis1983@okicici</div>
+                        <div class="compact-expiry-hint">Pro till <span id="upi-expiry-date">...</span></div>
+                    </div>
+
+                    <!-- Right: Minimal Form -->
+                    <div class="upi-right-panel">
+                        <div class="compact-form-header">
+                            <h3>Verify Payment</h3>
+                            <button class="close-minimal-btn" onclick="document.getElementById('upi-modal').classList.add('hidden')">✕</button>
                         </div>
                         
-                    </div>
-                </div>
-
-
-                <!-- Resource Status Dashboard (Puter Only Now) -->
-                <div id="resource-status-card" class="glass-card usage-card hidden"
-                    style="margin-top: 20px; padding: 20px; text-align: left; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05);">
-                    <div
-                        style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
-                        <span
-                            style="font-size: 0.95rem; font-weight: 500; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
-                            Puter Resources <span class="material-icons-round"
-                                style="font-size: 16px; color: var(--text-muted); opacity: 0.5;">chevron_right</span>
-                        </span>
-                        <span id="usage-refresh-time"
-                            style="font-size: 0.75rem; color: var(--text-muted); opacity: 0.7;">Updated: --</span>
-                    </div>
-
-                    <!-- Puter Usage (Primary) -->
-                    <div style="margin-bottom: 0px;">
-                        <div id="puter-usage-container">
-                            <div
-                                style="height: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 12px; overflow: hidden;">
-                                <div id="puter-usage-bar"
-                                    style="width: 0%; height: 100%; background: linear-gradient(90deg, #f59e0b, #fbbf24); border-radius: 6px; transition: width 0.5s ease;">
-                                </div>
-                            </div>
-                            <div style="display: flex; flex-direction: column; gap: 2px;">
-                                <div id="puter-usage-text"
-                                    style="font-size: 1.25rem; font-weight: 600; color: var(--text-main);">$0.00 Used
-                                </div>
-                                <div id="puter-quota-text" style="font-size: 0.8rem; color: var(--text-muted);">0% of
-                                    $0.50</div>
-                            </div>
+                        <div class="minimal-input-group">
+                            <input type="email" id="upi-email" readonly placeholder="Account Email">
                         </div>
-                    </div>
-                </div>
-
-                <div id="puter-reset-area" class="hidden"
-                    style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; margin-top: 15px;">
-                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;">AI Model trial
-                        expired? You can create new accounts whenever limits are reached.</p>
-                    <button id="switch-account-link" class="secondary-btn"
-                        style="width: 100%; font-size: 0.85rem; padding: 10px;">
-                        <span class="material-icons-round" style="font-size: 16px;">manage_accounts</span> Reset
-                        Puter AI Session
-                    </button>
-                </div>
-            </div>
-    </div>
-    </section>
-    <!-- Screen 2: Meeting Interface -->
-    <section id="meeting-screen" class="screen">
-        <header class="app-header">
-            <div class="header-info">
-                <div class="live-indicator">
-                    <span class="blob"></span> LIVE
-                </div>
-                <h2 id="display-topic">Meeting Topic</h2>
-            </div>
-            <button id="end-session-btn" class="danger-btn-sm">End Session</button>
-        </header>
-
-        <main class="split-view">
-            <!-- AI Suggestions Panel (Now Left) -->
-            <div class="panel ai-panel">
-                <div class="panel-header">
-                    <span class="material-icons-round">auto_awesome</span> AI Insights
-                </div>
-                <div id="ai-feed" class="scroll-content">
-                    <div class="ai-welcome">AI is listening...</div>
-                </div>
-            </div>
-
-            <!-- Transcript Feed (Now Right) -->
-            <div class="panel transcript-panel">
-                <div class="panel-header">
-                    <span class="material-icons-round">record_voice_over</span>
-                    <span style="flex: 1;">Live Transcript</span>
-                    <button id="quick-reply-meeting-btn" class="header-action-btn" title="Quick Reply">
-                        <span class="material-icons-round">bolt</span>
-                    </button>
-                </div>
-                <div id="transcript-feed" class="scroll-content">
-                    <p class="placeholder-text">Waiting for speech...</p>
-                </div>
-                
-                <div id="staged-screenshots-container" style="display: flex; gap: 8px; padding: 2px 8px; min-height: 0; overflow-x: auto; margin-top: auto;"></div>
-
-                <!-- Mic Status / Visualization -->
-                <div class="audio-visualizer">
-                    <div class="bar"></div>
-                    <div class="bar"></div>
-                    <div class="bar"></div>
-                    <div class="bar"></div>
-                    <div class="bar"></div>
-                </div>
-            </div>
-        </main>
-
-        <footer class="controls">
-
-            <!-- Center Mic -->
-            <button id="mic-toggle-btn" class="fab" title="Answer Now">
-                <span class="material-icons-round">mic</span>
-            </button>
-
-            <!-- Status Text (absolute or moved) -->
-            <div class="status-stack">
-                <div id="vad-status" class="vad-badge hidden">VAD: Waiting</div>
-                <div id="status-text" class="status-overlay">Listening...</div>
-            </div>
-        </footer>
-    </section>
-
-    <!-- Screen 3: Summary / End -->
-    <section id="end-screen" class="screen">
-        <div class="glass-card end-card">
-            <h2>Meeting Ended</h2>
-            <div class="stats">
-                <div class="stat-item">
-                    <span class="label">Transcript Length</span>
-                    <span id="stat-words" class="value">0 words</span>
-                </div>
-                <div class="stat-item">
-                    <span class="label">AI Insights</span>
-                    <span id="stat-insights" class="value">0 generated</span>
-                </div>
-            </div>
-
-            <div id="feedback-section" class="feedback-section">
-                <p class="feedback-label">How was your session?</p>
-                <div class="star-rating" id="star-rating">
-                    <span class="material-icons-round star" data-value="1">star_outline</span>
-                    <span class="material-icons-round star" data-value="2">star_outline</span>
-                    <span class="material-icons-round star" data-value="3">star_outline</span>
-                    <span class="material-icons-round star" data-value="4">star_outline</span>
-                    <span class="material-icons-round star" data-value="5">star_outline</span>
-                </div>
-                <textarea id="feedback-comment" placeholder="Any issues or suggestions?"
-                    class="feedback-input"></textarea>
-                <button id="submit-feedback-btn" class="secondary-btn" style="margin-top: 10px; width: 100%;">Submit
-                    Feedback</button>
-            </div>
-
-            <div class="action-buttons">
-                <button id="download-btn" class="secondary-btn">
-                    <span class="material-icons-round">download</span> Download Transcript
-                </button>
-                <button id="clear-exit-btn" class="primary-btn">
-                    <span class="material-icons-round">restart_alt</span> Clear & Exit
-                </button>
-            </div>
-        </div>
-    </section>
-
-    <!-- NEW: UPI Payment Modal -->
-    <div id="upi-modal" class="modal-overlay hidden">
-        <div class="glass-card upi-modal-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0; font-size: 1.25rem;">Manual UPI Payment</h2>
-                <button id="close-upi-modal" class="icon-btn-lite" style="background:none; border:none; color:var(--text-muted); cursor:pointer;"><span class="material-icons-round">close</span></button>
-            </div>
-            
-            <div class="upi-content-grid">
-                <div class="upi-qr-area">
-                    <img src="assets/upi_qr.png" alt="UPI QR Code" class="upi-qr-img">
-                    <p class="upi-id-text">UPI ID: <span>akmis1983@okicici</span></p>
-                    <p class="upi-instruction">Scan with GPay, PhonePe, or Paytm</p>
-
-                    <!-- Amount & Validity Info -->
-                    <div class="upi-amount-box">
-                        <div class="upi-amount-row">
-                            <span class="material-icons-round" style="font-size:18px; color:#4ade80;">currency_rupee</span>
-                            <div>
-                                <div class="upi-amount-value">₹500</div>
-                                <div class="upi-amount-label">for 1 month</div>
-                            </div>
+                        
+                        <div class="minimal-input-group">
+                            <input type="text" id="upi-utr" placeholder="12-digit UTR Record Number" maxlength="12">
                         </div>
-                        <div class="upi-validity-row">
-                            <span class="material-icons-round" style="font-size:14px; color: var(--text-muted);">event</span>
-                            <span>Pro till <strong id="upi-expiry-date">—</strong></span>
+
+                        <div class="minimal-input-group">
+                            <input type="text" id="upi-vpa" placeholder="UPI ID (Optional)">
                         </div>
-                    </div>
-                </div>
 
-                <div class="upi-form-area">
-                    <div class="input-group">
-                        <label>Verified Email</label>
-                        <input type="email" id="upi-email" readonly style="background: rgba(255,255,255,0.05); color: var(--text-muted);">
+                        <button id="submit-upi-btn" class="primary-btn minimal-submit-btn">
+                            Activate Subscription
+                        </button>
+                        
+                        <p class="minimal-tip">Activation takes ~1hr</p>
                     </div>
-                    <div class="input-group">
-                        <label>UTR Number / Transaction ID</label>
-                        <input type="text" id="upi-utr" placeholder="12-digit number">
-                        <span class="hint">Check your banking app history after paying</span>
-                    </div>
-                    <div class="input-group">
-                        <label>Your UPI ID (Optional)</label>
-                        <input type="text" id="upi-vpa" placeholder="yourname@upi">
-                    </div>
-                    
-                    <div class="upi-notice">
-                        <span class="material-icons-round">schedule</span>
-                        We manually verify and upgrade accounts within 1 hour.
-                    </div>
-
-                    <button id="submit-upi-btn" class="primary-btn" style="width: 100%; margin-top: 15px;">
-                        Proceed & I've Paid
-                    </button>
                 </div>
             </div>
         </div>
-    </div>
 
     </div>
 
     <!-- Toast Notification -->
+    <!-- NEW: Subscription Bottom Sheet (Mobile First) -->
+    <div id="subscription-modal" class="modal-overlay hidden" onclick="if(event.target === this) closeSubscriptionModal()">
+        <div class="sub-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h3>Choose Payment Method</h3>
+                <button class="close-sheet-btn" onclick="closeSubscriptionModal()">✕</button>
+            </div>
+            
+            <div class="sheet-content">
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 20px;">Get unlimited AI sessions and visual analysis.</p>
+                
+                <div class="pay-options-list">
+                    <!-- Card / PayPal -->
+                    <div class="pay-sheet-card" onclick="openPaddleCheckout()">
+                        <div class="pay-sheet-icon" style="background: rgba(139, 92, 246, 0.1); color: var(--primary);">
+                            <span class="material-icons-round">payment</span>
+                        </div>
+                        <div class="pay-sheet-info">
+                            <div class="pay-sheet-name">Card or PayPal</div>
+                            <div class="pay-sheet-desc">Use code <b>LAUNCH80</b> for 80% Off</div>
+                        </div>
+                        <div class="pay-sheet-price">$5.80</div>
+                    </div>
+
+                    <!-- UPI -->
+                    <div class="pay-sheet-card" onclick="openUpiModal()">
+                        <div class="pay-sheet-icon" style="background: rgba(0, 140, 255, 0.1); color: #008cff;">
+                            <span class="material-icons-round">qr_code</span>
+                        </div>
+                        <div class="pay-sheet-info">
+                            <div class="pay-sheet-name">Direct UPI Pay <span class="india-tag" style="position:static; margin-left:5px;">India</span></div>
+                            <div class="pay-sheet-desc">Verified manually • <b>80% Off</b></div>
+                        </div>
+                        <div class="pay-sheet-price">₹500</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 25px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 12px; text-align: left;">
+                    <div style="font-size: 0.85rem; font-weight: 600; margin-bottom: 10px;">Pro Plan Features:</div>
+                    <ul style="font-size: 0.8rem; color: var(--text-muted); padding-left: 18px; margin: 0; line-height: 1.6;">
+                        <li>Unlimited AI responses & streaming</li>
+                        <li>Advanced Visual/Screenshot analysis</li>
+                        <li>High-priority response speed</li>
+                        <li>Save and download all transcripts</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <div id="toast" class="hidden">Notification</div>
 
     <script src="backend/config.js"></script>
-    <script src="script.js?v=65"></script>
+    <script src="script.js?v=160"></script>
     <!-- Paddle.js v2 -->
     <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
     <script>
         // --- PUTER LOGIN BRIDGE FOR NATIVE APPS ---
-        (function() {
+        (function () {
             const isNativeApp = !!(window.electronAPI || (window.Capacitor && window.Capacitor.platform !== 'web'));
-            
+
             // Listen for Desktop Token (Electron)
             if (window.electronAPI && window.electronAPI.onPuterAuthToken) {
                 window.electronAPI.onPuterAuthToken(token => {
@@ -454,11 +495,11 @@
                     // Set both possible keys just in case
                     localStorage.setItem('puter-auth-token', token);
                     localStorage.setItem('puter.auth.token', token);
-                    
+
                     // Visual feedback
                     const statusLine = document.getElementById('status-msg') || { textContent: "" };
                     statusLine.textContent = "Syncing with Puter...";
-                    
+
                     // Brief delay then reload to apply session
                     setTimeout(() => {
                         location.reload();
@@ -473,14 +514,14 @@
                     if (data.url && data.url.includes('token=')) {
                         const match = data.url.match(/token=([^&]+)/);
                         const token = match ? decodeURIComponent(match[1]) : null;
-                        
+
                         if (token) {
                             localStorage.setItem('puter-auth-token', token);
                             localStorage.setItem('puter.auth.token', token);
-                            
+
                             const statusLine = document.getElementById('status-msg') || { textContent: "" };
                             statusLine.textContent = "Mobile Sync Success!";
-                            
+
                             setTimeout(() => { location.reload(); }, 500);
                         }
                     }
