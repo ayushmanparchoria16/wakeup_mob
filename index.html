@@ -479,6 +479,34 @@
     
     <div id="toast" class="hidden">Notification</div>
 
+    <!-- NEW: Auto-Update Modal (Premium Glassmorphism) -->
+    <div id="update-modal" class="modal-overlay hidden">
+        <div class="glass-card update-card">
+            <div class="update-header">
+                <div class="update-icon-circle">
+                    <span class="material-icons-round">rocket_launch</span>
+                </div>
+                <h2>New Version Available!</h2>
+                <div class="version-badge" id="new-version-tag">v1.5.0</div>
+            </div>
+            
+            <div class="update-info">
+                <p>A new version of <b>Interviewbold</b> is ready to download.</p>
+                <div class="release-notes-container">
+                    <div class="notes-label">What's New:</div>
+                    <div id="release-notes" class="notes-content">Fetching updates...</div>
+                </div>
+            </div>
+
+            <div class="update-actions">
+                <button id="upgrade-confirm-btn" class="primary-btn pulse-btn">
+                    <span class="material-icons-round">download</span> Upgrade Now
+                </button>
+                <button class="secondary-btn-sm" onclick="closeUpdateModal()">Install Later</button>
+            </div>
+        </div>
+    </div>
+
     <script src="backend/config.js"></script>
     <script src="script.js?v=160"></script>
     <!-- Paddle.js v2 -->

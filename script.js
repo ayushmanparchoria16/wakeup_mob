@@ -9,6 +9,8 @@ const CONFIG = {
     MIN_DECIBELS: -45, // Threshold for detecting speech
     SILENCE_DELAY_MS: 1200, // How long to wait in silence before sending audio
     AI_PROXY_URL: "https://interviewbold.ayushmanparchoria16.workers.dev",
+    VERSION: "1.0.0", // Current App Version
+    GITHUB_REPO: "ayushmanparchoria16/wakeup_website", // Repository source
 };
 
 const state = {
@@ -375,6 +377,9 @@ function init() {
 
     // Initial check
     checkSetupStatus();
+
+    // Check for Updates (GitHub Release)
+    setTimeout(checkForUpdates, 3000); 
 }
 
 /**
@@ -2150,3 +2155,83 @@ async function handleUPIPaymentSubmit() {
 }
 
 window.addEventListener('load', init);
+/**
+ * --- Auto-Update System ---
+ */
+
+async function checkForUpdates() {
+    // Only check in native apps (Electron or Capacitor)
+    const isNativeApp = !!(window.electronAPI || (window.Capacitor && window.Capacitor.platform !== 'web'));
+    if (!isNativeApp) return;
+
+    console.log("Checking for updates...");
+    try {
+        const response = await fetch(`https://api.github.com/repos/${CONFIG.GITHUB_REPO}/releases/latest`);
+        if (!response.ok) throw new Error("GitHub API unreachable");
+        
+        const latest = await response.json();
+        const latestTag = latest.tag_name; // e.g. "v1.1.0" or "1.1.0"
+
+        if (isNewerVersion(latestTag, CONFIG.VERSION)) {
+            console.log(`Update found: ${latestTag}`);
+            
+            // Determine platform and find matching asset
+            const isAndroid = window.Capacitor && window.Capacitor.platform === 'android';
+            const isWindows = !!window.electronAPI;
+
+            let downloadUrl = "";
+            if (isAndroid) {
+                const apkAsset = latest.assets.find(a => a.name.toLowerCase().endsWith('.apk'));
+                if (apkAsset) downloadUrl = apkAsset.browser_download_url;
+            } else if (isWindows) {
+                const exeAsset = latest.assets.find(a => a.name.toLowerCase().endsWith('.exe'));
+                if (exeAsset) downloadUrl = exeAsset.browser_download_url;
+            }
+
+            if (downloadUrl) {
+                showUpdatePopup(latestTag, latest.body, downloadUrl);
+            }
+        }
+    } catch (e) {
+        console.error("Auto-Update Error:", e);
+    }
+}
+
+function isNewerVersion(latest, current) {
+    const parse = (v) => v.replace(/^v/, '').split('.').map(Number);
+    const a = parse(latest);
+    const b = parse(current);
+    
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const v1 = a[i] || 0;
+        const v2 = b[i] || 0;
+        if (v1 > v2) return true;
+        if (v1 < v2) return false;
+    }
+    return false;
+}
+
+function showUpdatePopup(version, notes, url) {
+    const modal = document.getElementById('update-modal');
+    const versionTag = document.getElementById('new-version-tag');
+    const notesEl = document.getElementById('release-notes');
+    const upgradeBtn = document.getElementById('upgrade-confirm-btn');
+
+    if (versionTag) versionTag.textContent = version;
+    if (notesEl) notesEl.textContent = notes || "General improvements and bug fixes.";
+    
+    if (upgradeBtn) {
+        upgradeBtn.onclick = () => {
+            showToast("Starting download...", 3000);
+            window.open(url, '_system');
+        };
+    }
+
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeUpdateModal() {
+    const modal = document.getElementById('update-modal');
+    if (modal) modal.classList.add('hidden');
+    showToast("Update postponed. You can upgrade on next restart.");
+}
