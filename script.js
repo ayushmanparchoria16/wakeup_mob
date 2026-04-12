@@ -2162,9 +2162,15 @@ window.addEventListener('load', init);
 async function checkForUpdates() {
     // Only check in native apps (Electron or Capacitor)
     const isNativeApp = !!(window.electronAPI || (window.Capacitor && window.Capacitor.platform !== 'web'));
-    if (!isNativeApp) return;
+    
+    console.log("Update Check Status:", {
+        isNativeApp,
+        hasElectron: !!window.electronAPI,
+        hasCapacitor: !!window.Capacitor,
+        platform: window.Capacitor ? window.Capacitor.platform : 'n/a'
+    });
 
-    console.log("Checking for updates...");
+    if (!isNativeApp) return;
     
     // Determine native version
     let nativeVersion = CONFIG.VERSION;
@@ -2174,18 +2180,21 @@ async function checkForUpdates() {
         if (window.electronAPI.getAppVersion) {
             nativeVersion = await window.electronAPI.getAppVersion();
         } else {
-            isOldNativeApp = true; // Old EXE without version reporting
+            isOldNativeApp = true;
         }
-    } else if (window.Capacitor && window.Capacitor.platform !== 'web') {
+    } else if (window.Capacitor) {
+        // More aggressive: If it's capacitor but can't find the App plugin, it MUST be old.
         if (window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
             try {
                 const info = await window.Capacitor.Plugins.App.getInfo();
                 nativeVersion = info.version;
+                console.log("Capacitor Native Version:", nativeVersion);
             } catch (e) {
-                isOldNativeApp = true; // Bridge error, likely old build
+                isOldNativeApp = true;
             }
         } else {
-            isOldNativeApp = true; // Old APK without App plugin
+            console.log("Old Capacitor detected (No App Plugin)");
+            isOldNativeApp = true;
         }
     }
 
