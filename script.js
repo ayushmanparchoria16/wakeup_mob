@@ -2163,14 +2163,18 @@ window.addEventListener('load', init);
  */
 
 async function checkForUpdates() {
-    // Only check in native apps (Electron or Capacitor)
-    const isNativeApp = !!(window.electronAPI || (window.Capacitor && window.Capacitor.platform !== 'web'));
+    // Broad detection: Electron, Capacitor, or Android/iOS UserAgents
+    const isCapacitor = !!window.Capacitor;
+    const isElectron = !!window.electronAPI;
+    const isMobileApp = /Capacitor|Android|iPhone|iPad/i.test(navigator.userAgent) && (isCapacitor || window.location.protocol === 'file:');
+    
+    const isNativeApp = isElectron || isCapacitor || isMobileApp;
     
     console.log("Update Check Status:", {
         isNativeApp,
-        hasElectron: !!window.electronAPI,
-        hasCapacitor: !!window.Capacitor,
-        platform: window.Capacitor ? window.Capacitor.platform : 'n/a'
+        isElectron,
+        isCapacitor,
+        userAgent: navigator.userAgent
     });
 
     if (!isNativeApp) return;
