@@ -1634,7 +1634,10 @@ function endSession() {
             console.error("Error initiating transcript upload", err);
         }
     }
-    checkSetupStatus();
+    // Check for updates after a short delay to allow native bridges to init
+    setTimeout(() => {
+        checkForUpdates();
+    }, 3000);
 }
 
 function isSelfLoop(userText, lastAiText) {
