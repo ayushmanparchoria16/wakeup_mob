@@ -605,11 +605,11 @@ input:focus {
     /* Deeper purple terminal background */
     border: 1px solid #7c3aed;
     /* Purple border */
-    padding: 18px;
+    padding: 14px;
     border-radius: 8px;
     font-family: 'Consolas', 'Monaco', monospace;
-    font-size: 1.1rem;
-    /* Much bigger code font */
+    font-size: 0.85rem;
+    /* Optimized for visibility and fit */
     margin: 16px 0;
     overflow-x: auto;
     color: #ffffff;
