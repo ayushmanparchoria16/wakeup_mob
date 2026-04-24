@@ -110,23 +110,10 @@
 
                     <!-- Personalization Toggle -->
                     <div id="personalization-toggle-area" style="text-align: left; margin-bottom: 15px;">
-                        <button id="toggle-personalization-btn" onclick="document.getElementById('personalization-content').classList.toggle('hidden')" class="secondary-btn-sm" style="width: 100%; justify-content: center; background: rgba(167, 139, 250, 0.1); border: 1px dashed rgba(167, 139, 250, 0.3); padding: 10px; border-radius: 10px;">
+                        <button id="open-personalization-btn" onclick="openPersonalizationModal()" class="secondary-btn-sm" style="width: 100%; justify-content: center; background: rgba(167, 139, 250, 0.1); border: 1px dashed rgba(167, 139, 250, 0.3); padding: 10px; border-radius: 10px;">
                             <span class="material-icons-round" style="font-size: 16px;">psychology</span>
-                            Add Personalization (Resume / JD)
+                            Personalize AI (Resume/JD)
                         </button>
-                    </div>
-
-                    <!-- Personalization Content (Hidden by default) -->
-                    <div id="personalization-content" class="hidden" style="text-align: left; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 20px;">
-                        <div class="input-group">
-                            <label style="font-size: 0.75rem; color: var(--accent);">My Resume / Experience Context</label>
-                            <textarea id="resume-input" placeholder="Paste your experience or resume summary..." style="width: 100%; height: 80px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 10px; font-size: 0.85rem; resize: vertical; margin-top: 5px; font-family: inherit;"></textarea>
-                        </div>
-                        <div class="input-group" style="margin-top: 10px;">
-                            <label style="font-size: 0.75rem; color: var(--accent);">Target Job Description</label>
-                            <textarea id="jd-input" placeholder="Paste the job description context..." style="width: 100%; height: 80px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 10px; font-size: 0.85rem; resize: vertical; margin-top: 5px; font-family: inherit;"></textarea>
-                        </div>
-                        <p style="font-size: 0.65rem; color: var(--text-muted); margin-top: 8px; line-height: 1.3;">📌 AI will reference your background and the target role requirements when generating answers.</p>
                     </div>
 
                     <!-- Topic Input (For all tiers) -->
@@ -483,6 +470,41 @@
                         <span class="material-icons-round" style="font-size: 16px;">restart_alt</span> Reset AI Session
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: Personalization Modal (Mobile First Bottom Sheet) -->
+    <div id="personalization-modal" class="modal-overlay hidden" onclick="if(event.target === this) closePersonalizationModal()">
+        <div class="sub-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h3>AI Personalization</h3>
+                <button class="close-sheet-btn" onclick="closePersonalizationModal()">✕</button>
+            </div>
+            
+            <div class="sheet-content" style="padding: 20px;">
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 20px;">Provide your context to get tailored, expert AI answers during your sessions.</p>
+                
+                <div class="input-group" style="margin-bottom: 20px;">
+                    <label style="font-size: 0.85rem; color: var(--text-main);">My Resume / Experience</label>
+                    <textarea id="resume-input" placeholder="Paste your resume summary, key projects, or experience here..." style="width: 100%; height: 160px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #fff; padding: 12px; font-size: 0.85rem; resize: vertical; margin-top: 8px; font-family: inherit; line-height: 1.5;"></textarea>
+                </div>
+
+                <div class="input-group" style="margin-bottom: 20px;">
+                    <label style="font-size: 0.85rem; color: var(--text-main);">Target Job Description (JD)</label>
+                    <textarea id="jd-input" placeholder="Paste the job requirements or target role description here..." style="width: 100%; height: 120px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #fff; padding: 12px; font-size: 0.85rem; resize: vertical; margin-top: 8px; font-family: inherit; line-height: 1.5;"></textarea>
+                </div>
+
+                <div style="padding: 15px; background: rgba(167, 139, 250, 0.05); border-radius: 12px; border: 1px dashed rgba(167, 139, 250, 0.2);">
+                    <p style="font-size: 0.75rem; color: #a78bfa; margin: 0; line-height: 1.4;">
+                        <b>Pro Tip:</b> AI will use these details to make suggestions sound more professional and relevant to your background.
+                    </p>
+                </div>
+
+                <button onclick="closePersonalizationModal()" class="primary-btn" style="width: 100%; margin-top: 25px; justify-content: center; padding: 14px;">
+                    Save & Close
+                </button>
             </div>
         </div>
     </div>

@@ -80,6 +80,16 @@ function closeByokModal() {
     if (modal) modal.classList.add('hidden');
 }
 
+function openPersonalizationModal() {
+    const modal = document.getElementById('personalization-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closePersonalizationModal() {
+    const modal = document.getElementById('personalization-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
 function openUpiModal() {
     if (!state.currentUser) return showToast("Please login first");
     
