@@ -50,7 +50,11 @@ const state = {
     demoKey: "",
     demoProviderEmail: "",
     demoResponsesCount: 0,
-    pendingScreenshots: []
+    pendingScreenshots: [],
+    
+    // Personalization Context
+    resumeContext: localStorage.getItem('resume_context') || '',
+    jobContext: localStorage.getItem('job_context') || ''
 };
 
 // --- Mobile & Modal Controls ---
@@ -142,7 +146,9 @@ const inputs = {
     regEmail: document.getElementById('register-email'),
     regPass: document.getElementById('register-password'),
     forgotEmail: document.getElementById('forgot-email'),
-    deepgramKey: document.getElementById('deepgram-key-input')
+    deepgramKey: document.getElementById('deepgram-key-input'),
+    resume: document.getElementById('resume-input'),
+    jd: document.getElementById('jd-input')
 };
 
 const buttons = {
@@ -378,6 +384,22 @@ function init() {
 
     // Initial check
     checkSetupStatus();
+    
+    // Personalization Pre-fill
+    if (inputs.resume) {
+        inputs.resume.value = state.resumeContext;
+        inputs.resume.addEventListener('input', () => {
+            state.resumeContext = inputs.resume.value;
+            localStorage.setItem('resume_context', state.resumeContext);
+        });
+    }
+    if (inputs.jd) {
+        inputs.jd.value = state.jobContext;
+        inputs.jd.addEventListener('input', () => {
+            state.jobContext = inputs.jd.value;
+            localStorage.setItem('job_context', state.jobContext);
+        });
+    }
 
     // Check for Updates (GitHub Release)
     setTimeout(checkForUpdates, 3000); 
@@ -1203,12 +1225,22 @@ async function streamAIResponse(element, retries = 2) {
         - **AVOID** textbook definitions. Don't say "React is a library...". Say "I use React to..." or "The reason I choose React is...".
         - Use "I" statements. Talk about *your* experience and *your* approach.
         
+        USER CONTEXT (USE THIS TO TAILOR YOUR ANSWERS):
+        - MY RESUME/EXPERIENCE: ${state.resumeContext || "Not provided."}
+        - TARGET JOB DESCRIPTION: ${state.jobContext || "Not provided."}
+
+        PERSONALIZATION RULE:
+        - If resume or job details are provided, refer to specific projects, skills, or achievements from the resume that match the job description.
+        - Frame answers as "In my previous experience with..." or "When I worked on [Project] mentioned in my resume...".
+        - Tailor your technical level to match the seniority described in the resume.
+        
         CONTEXT AWARENESS:
         1. You are receiving a transcript from a local Speech-to-Text engine. It WILL contain phonetic mistakes, garbled words, and missing context (e.g., "board process" -> "boot process", "re act" -> "React").
         2. **FIRST STEP - SMART RECONSTRUCTION**: You MUST first analyze the raw transcript and deduce what the interviewer *actually* asked based on context, technical terms, and sound-alike words. Frame the correct question logically.
         3. Output your reconstructed question in EXACTLY this format:
            [QUESTION: The corrected, reconstructed question]
         4. **SECOND STEP**: Answer the reconstructed question directly. Do not say "I understood this". Just start the answer.
+        5. **LINK TO CONTEXT**: Whenever possible, link the technical answer to the projects or experience listed in the resume context above.
 
         UNIVERSAL CODE FORMATTING RULE:
         - Apply professional standards (e.g., PEP 8 for Python) to ALL technology and languages.

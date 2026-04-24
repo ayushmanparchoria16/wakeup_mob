@@ -108,8 +108,29 @@
                             style="color:var(--danger); text-decoration:none; font-size:0.8rem; display: inline-block; margin-top: 5px;">Logout</a>
                     </p>
 
+                    <!-- Personalization Toggle -->
+                    <div id="personalization-toggle-area" style="text-align: left; margin-bottom: 15px;">
+                        <button id="toggle-personalization-btn" onclick="document.getElementById('personalization-content').classList.toggle('hidden')" class="secondary-btn-sm" style="width: 100%; justify-content: center; background: rgba(167, 139, 250, 0.1); border: 1px dashed rgba(167, 139, 250, 0.3); padding: 10px; border-radius: 10px;">
+                            <span class="material-icons-round" style="font-size: 16px;">psychology</span>
+                            Add Personalization (Resume / JD)
+                        </button>
+                    </div>
+
+                    <!-- Personalization Content (Hidden by default) -->
+                    <div id="personalization-content" class="hidden" style="text-align: left; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 20px;">
+                        <div class="input-group">
+                            <label style="font-size: 0.75rem; color: var(--accent);">My Resume / Experience Context</label>
+                            <textarea id="resume-input" placeholder="Paste your experience or resume summary..." style="width: 100%; height: 80px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 10px; font-size: 0.85rem; resize: vertical; margin-top: 5px; font-family: inherit;"></textarea>
+                        </div>
+                        <div class="input-group" style="margin-top: 10px;">
+                            <label style="font-size: 0.75rem; color: var(--accent);">Target Job Description</label>
+                            <textarea id="jd-input" placeholder="Paste the job description context..." style="width: 100%; height: 80px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 10px; font-size: 0.85rem; resize: vertical; margin-top: 5px; font-family: inherit;"></textarea>
+                        </div>
+                        <p style="font-size: 0.65rem; color: var(--text-muted); margin-top: 8px; line-height: 1.3;">📌 AI will reference your background and the target role requirements when generating answers.</p>
+                    </div>
+
                     <!-- Topic Input (For all tiers) -->
-                    <div class="input-group" style="text-align: left; margin-top: 20px;">
+                    <div class="input-group" style="text-align: left; margin-top: 10px;">
                         <label>Interview Topic / Details</label>
                         <input type="text" id="topic-input" placeholder="e.g. Java Backend Developer Interview">
                     </div>
