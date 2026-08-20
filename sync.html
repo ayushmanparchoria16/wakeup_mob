@@ -127,8 +127,17 @@
             <h1>Perfect Connection!</h1>
             <p style="font-size: 14px; opacity: 0.7;">Your app session has been synchronized. You can return to
                 Interviewbold now.</p>
+            
+            <div style="margin-top: 20px; padding: 15px; background: rgba(0,0,0,0.3); border-radius: 12px;">
+                <p style="font-size: 12px; color: #aaa; margin-bottom: 8px; margin-top: 0;">If the Desktop App didn't automatically refresh, copy this token and paste it manually:</p>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="raw-token-input" readonly style="flex: 1; background: transparent; border: 1px solid rgba(167, 139, 250, 0.3); color: #fff; padding: 8px; border-radius: 6px; font-size: 12px; cursor: pointer;">
+                    <button onclick="navigator.clipboard.writeText(document.getElementById('raw-token-input').value); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy', 2000)" class="btn" style="margin-top: 0; width: auto; padding: 8px 15px;">Copy</button>
+                </div>
+            </div>
+
             <button onclick="window.close()" class="btn"
-                style="background:transparent; border: 1px solid var(--accent);">Close Tab</button>
+                style="background:transparent; border: 1px solid var(--accent); margin-top: 20px;">Close Tab</button>
         </div>
     </div>
 
@@ -153,6 +162,7 @@
                 setTimeout(() => { window.location = deepLink; }, 500);
             }
 
+            document.getElementById('raw-token-input').value = token;
             authContent.style.display = 'none';
             successContent.style.display = 'block';
         }

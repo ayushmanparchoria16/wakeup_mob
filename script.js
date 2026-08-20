@@ -188,7 +188,10 @@ const buttons = {
     openByokModal: document.getElementById('open-byok-modal-btn'),
     // Subscription/UPI
     subscribeMain: document.getElementById('open-subscription-modal-btn'),
-    submitUpi: document.getElementById('submit-upi-btn')
+    submitUpi: document.getElementById('submit-upi-btn'),
+    // Manual Token
+    toggleManualToken: document.getElementById('toggle-manual-token-btn'),
+    manualTokenSubmit: document.getElementById('manual-token-submit')
 };
 
 const displays = {
@@ -219,7 +222,9 @@ const displays = {
     activeSessionOptions: document.getElementById('active-session-options'),
     premiumBadge: document.getElementById('premium-badge'),
     premiumExpiry: document.getElementById('premium-expiry'),
-    upiModal: document.getElementById('upi-modal')
+    upiModal: document.getElementById('upi-modal'),
+    manualTokenArea: document.getElementById('manual-token-area'),
+    manualTokenInput: document.getElementById('manual-token-input')
 };
 
 // --- Initialization ---
@@ -403,6 +408,30 @@ function init() {
         buttons.connectPuter.addEventListener('click', async () => {
             await puter.auth.signIn();
             checkSetupStatus();
+        });
+    }
+
+    if (buttons.toggleManualToken) {
+        buttons.toggleManualToken.addEventListener('click', (e) => {
+            e.preventDefault();
+            displays.manualTokenArea.classList.toggle('hidden');
+        });
+    }
+
+    if (buttons.manualTokenSubmit) {
+        buttons.manualTokenSubmit.addEventListener('click', () => {
+            const token = displays.manualTokenInput.value.trim();
+            if (!token) return showToast('Please enter a valid token');
+            
+            localStorage.setItem('puter.auth.token', token);
+            localStorage.setItem('puter_token', token);
+            localStorage.setItem('puter-auth-token', token);
+            if (window.puter && window.puter.auth && typeof window.puter.auth.setToken === 'function') {
+                try { window.puter.auth.setToken(token); } catch(e) {}
+            }
+            
+            showToast('Token saved! Syncing...', 2000);
+            setTimeout(() => location.reload(), 1000);
         });
     }
 

@@ -446,6 +446,13 @@
                             <span class="material-icons-round" style="font-size: 18px;">cloud_sync</span>
                             Connect Puter (Required)
                         </button>
+                        <div style="text-align: center; margin-top: 10px; font-size: 0.75rem;">
+                            <a href="#" id="toggle-manual-token-btn" style="color: rgba(255,255,255,0.4); text-decoration: underline;">App didn't refresh? Paste token manually</a>
+                        </div>
+                        <div id="manual-token-area" class="hidden" style="margin-top: 10px; display: flex; gap: 8px;">
+                            <input type="text" id="manual-token-input" class="dark-input" placeholder="Paste token here..." style="flex: 1; padding: 10px; font-size: 12px;">
+                            <button id="manual-token-submit" class="primary-btn" style="padding: 8px 15px; border-radius: 8px;">Save</button>
+                        </div>
                     </div>
                     <div id="puter-connected-status" class="hidden" style="display: flex; align-items: center; gap: 10px; color: #4ade80; font-size: 0.85rem; font-weight: 600;">
                         <span class="material-icons-round">check_circle</span> Puter Connected
