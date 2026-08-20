@@ -1,15 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Connect Interviewbold</title>
     <script>
         // --- ADVANCED TOKEN INTERCEPTOR (V3) ---
-        (function() {
+        (function () {
             // Intercept Fetch
             const originalFetch = window.fetch;
-            window.fetch = function(url, config) {
+            window.fetch = function (url, config) {
                 if (config && config.headers) {
                     let auth = null;
                     if (config.headers instanceof Headers) { auth = config.headers.get('Authorization'); }
@@ -23,7 +24,7 @@
 
             // Intercept XMLHttpRequest
             const originalXHR = XMLHttpRequest.prototype.setRequestHeader;
-            XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
+            XMLHttpRequest.prototype.setRequestHeader = function (header, value) {
                 if (header.toLowerCase() === 'authorization' && value.startsWith('Bearer ')) {
                     window.capturedPuterToken = value.replace('Bearer ', '');
                 }
@@ -35,42 +36,87 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #0c0c16; --card-bg: #141425; --accent: #a78bfa; --text: #ffffff;
+            --bg: #0c0c16;
+            --card-bg: #141425;
+            --accent: #a78bfa;
+            --text: #ffffff;
         }
+
         body {
-            margin: 0; padding: 0; font-family: 'Outfit', sans-serif;
-            background-color: var(--bg); color: var(--text);
-            display: flex; align-items: center; justify-content: center; height: 100vh;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
         }
+
         .container {
-            text-align: center; background: var(--card-bg); padding: 40px;
-            border-radius: 24px; border: 1.5px solid rgba(167, 139, 250, 0.2);
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5); max-width: 420px; width: 90%;
+            text-align: center;
+            background: var(--card-bg);
+            padding: 40px;
+            border-radius: 24px;
+            border: 1.5px solid rgba(167, 139, 250, 0.2);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            max-width: 420px;
+            width: 90%;
         }
-        .logo { font-size: 24px; font-weight: 700; color: var(--accent); margin-bottom: 20px; }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 20px;
+        }
+
         .btn {
-            background: var(--accent); color: #fff; border: none; padding: 14px 30px;
-            border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; width: 100%;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 14px 30px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
             margin-top: 20px;
         }
-        .status { margin-top: 20px; font-size: 13px; color: var(--accent); }
+
+        .status {
+            margin-top: 20px;
+            font-size: 13px;
+            color: var(--accent);
+        }
+
         .debug-info {
-            margin-top: 25px; padding: 10px; background: rgba(0,0,0,0.3);
-            border-radius: 8px; font-size: 11px; color: #888; text-align: left;
-            word-break: break-all; max-height: 80px; overflow-y: auto;
+            margin-top: 25px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            font-size: 11px;
+            color: #888;
+            text-align: left;
+            word-break: break-all;
+            max-height: 80px;
+            overflow-y: auto;
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="logo">Interviewbold Sync</div>
-        
+
         <div id="auth-content">
             <h1 style="font-size: 20px; margin-bottom: 10px;">Connect Account</h1>
-            <p style="font-size: 14px; opacity: 0.7; line-height: 1.5;">Please sign in below. Once finished, we will automatically hand over the session to your app.</p>
+            <p style="font-size: 14px; opacity: 0.7; line-height: 1.5;">Please sign in below. Once finished, we will
+                automatically hand over the session to your app.</p>
             <button id="start-auth-btn" class="btn">Login with Google / Email</button>
             <div id="status-msg" class="status">Click to begin</div>
-            
+
             <div id="debug-area" class="debug-info">
                 Status: Ready
             </div>
@@ -79,8 +125,10 @@
         <div id="success-content" style="display: none;">
             <div style="font-size: 48px; color: #4ade80; margin-bottom: 15px;">✓</div>
             <h1>Perfect Connection!</h1>
-            <p style="font-size: 14px; opacity: 0.7;">Your app session has been synchronized. You can return to Interviewbold now.</p>
-            <button onclick="window.close()" class="btn" style="background:transparent; border: 1px solid var(--accent);">Close Tab</button>
+            <p style="font-size: 14px; opacity: 0.7;">Your app session has been synchronized. You can return to
+                Interviewbold now.</p>
+            <button onclick="window.close()" class="btn"
+                style="background:transparent; border: 1px solid var(--accent);">Close Tab</button>
         </div>
     </div>
 
@@ -93,13 +141,16 @@
 
         async function syncToken(token) {
             debugArea.textContent = "Syncing Token: " + token.substring(0, 15) + "...";
-            
-            // Web Fallback: Pass to parent window if opened as popup
-            if (window.opener) {
+
+            // If opened as a popup from the Web App, send message and close
+            if (window.opener && !window.opener.closed) {
                 window.opener.postMessage({ type: 'PUTER_AUTH_TOKEN', token: token }, '*');
                 setTimeout(() => window.close(), 1000);
             } else {
-                debugArea.textContent = "Please close this tab and return to the app.";
+                // If opened from Desktop App (interviewbold.exe), trigger deep link
+                const deepLink = `interviewbold://auth?token=${encodeURIComponent(token)}`;
+                window.location.href = deepLink;
+                setTimeout(() => { window.location = deepLink; }, 500);
             }
 
             authContent.style.display = 'none';
@@ -109,17 +160,17 @@
         authBtn.addEventListener('click', async () => {
             statusMsg.textContent = "Opening Puter Sign-in...";
             debugArea.textContent = "Status: Polling for authentication...";
-            
+
             try {
                 await puter.auth.signIn();
                 statusMsg.textContent = "Signed in! Finalizing sync...";
-                
+
                 // Trigger requests to capture token
                 await puter.auth.getUser();
                 await puter.auth.isSignedIn();
 
                 let token = window.capturedPuterToken;
-                
+
                 // Fallback: check localStorage loops
                 if (!token) {
                     for (let i = 0; i < localStorage.length; i++) {
@@ -133,7 +184,7 @@
                 } else {
                     debugArea.textContent = "Status: Sign-in complete but token not found by interceptor. Please try again.";
                     statusMsg.textContent = "Token search failed. Retrying...";
-                    location.reload(); 
+                    location.reload();
                 }
             } catch (err) {
                 debugArea.textContent = "Error: " + err.message;
@@ -145,9 +196,10 @@
         window.onload = () => {
             if (puter.auth.isSignedIn()) {
                 authBtn.textContent = "Finish Connection & Sync";
-                puter.auth.getUser(); 
+                puter.auth.getUser();
             }
         };
     </script>
 </body>
+
 </html>
