@@ -93,12 +93,15 @@
 
         async function syncToken(token) {
             debugArea.textContent = "Syncing Token: " + token.substring(0, 15) + "...";
-            const deepLink = `interviewbold://auth?token=${encodeURIComponent(token)}`;
             
-            // Attempt multiple redirect methods
-            window.location.href = deepLink;
-            setTimeout(() => { window.location = deepLink; }, 500);
-            
+            // Web Fallback: Pass to parent window if opened as popup
+            if (window.opener) {
+                window.opener.postMessage({ type: 'PUTER_AUTH_TOKEN', token: token }, '*');
+                setTimeout(() => window.close(), 1000);
+            } else {
+                debugArea.textContent = "Please close this tab and return to the app.";
+            }
+
             authContent.style.display = 'none';
             successContent.style.display = 'block';
         }
