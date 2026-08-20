@@ -583,6 +583,19 @@ input:focus {
     background: var(--accent);
 }
 
+.user-message {
+    background: rgba(139, 92, 246, 0.15);
+    border-left: 4px solid var(--primary);
+    border-radius: 16px 16px 16px 0;
+    padding: 16px;
+    margin-bottom: 16px;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    animation: slideRight 0.4s ease;
+    align-self: flex-end;
+    margin-left: 20%;
+}
+
 /* AI Markdown Styles */
 .ai-message ul,
 .ai-message ol {
@@ -1722,4 +1735,58 @@ input:focus {
 .secondary-btn-sm:hover {
     opacity: 1;
     color: white;
+}
+
+/* --- Manual Text Input --- */
+.manual-input-container {
+    display: flex;
+    gap: 8px;
+    padding: 10px;
+    background: rgba(15, 23, 42, 0.95);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    align-items: center;
+    flex-shrink: 0;
+    z-index: 10;
+    /* Force to bottom of panel */
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    box-shadow: 0 -10px 20px rgba(0,0,0,0.3);
+}
+
+#manual-text-input {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-main);
+    padding: 10px 15px;
+    border-radius: var(--radius-md);
+    font-size: 0.95rem;
+    transition: all 0.3s;
+}
+
+#manual-text-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    background: rgba(0, 0, 0, 0.4);
+}
+
+#manual-send-btn {
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+#manual-send-btn:hover {
+    background: var(--primary-hover);
+    transform: scale(1.05);
 }

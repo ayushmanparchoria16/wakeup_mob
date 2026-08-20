@@ -26,7 +26,7 @@ export default {
       const { messages, model, stream } = body;
 
       // Your Puter Auth Token (the one you provided)
-      const PUTER_AUTH_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0IjoiZ3VpIiwidiI6IjAuMC4wIiwidSI6ImJ5bkVwOXBqUjVPMkNMVWJIN08zZEE9PSIsInV1IjoiU3k1Y2MxcW1RQnVIWTBveWpPUWx4QT09IiwiaWF0IjoxNzc1NDIxMDcwfQ.D2iUFh6JfiIcAkC_U7ZJ9Zc2BRWH7vZ6xdxpwNfENAo";
+      const PUTER_AUTH_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InYyIn0.eyJ0IjoidCIsInYiOiIyIiwidG9rZW5fdWlkIjoiNzY3YjBjN2ItYzBjZC00ZWU4LTlhMGUtNWIxYzUyODg4YWIwIiwidXUiOiJjeWN4L1F1aVRXU2tIU3VpdmpzYnV3PT0iLCJzdSI6InFzR29HL1JZUjBDUWFzMjN5M0JXeXc9PSIsImFpIjoiY3ljeC9RdWlUV1NrSFN1aXZqc2J1dz09IiwiZnVsbF9hY2Nlc3MiOnRydWUsImlhdCI6MTc4NzI1NTQxM30.-RogmvYY3kyyHeXJfk9VmpULuQiokWLlmw4L5sm_lYs";
 
       // 2. Forward request to Puter's OpenAI-compatible endpoint
       const response = await fetch("https://api.puter.com/puterai/openai/v1/chat/completions", {

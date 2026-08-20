@@ -158,7 +158,8 @@ const inputs = {
     forgotEmail: document.getElementById('forgot-email'),
     deepgramKey: document.getElementById('deepgram-key-input'),
     resume: document.getElementById('resume-input'),
-    jd: document.getElementById('jd-input')
+    jd: document.getElementById('jd-input'),
+    manualText: document.getElementById('manual-text-input')
 };
 
 const buttons = {
@@ -169,6 +170,7 @@ const buttons = {
     screenshot: document.getElementById('screenshot-btn'),
     download: document.getElementById('download-btn'),
     clearExit: document.getElementById('clear-exit-btn'),
+    manualSend: document.getElementById('manual-send-btn'),
     // Auth buttons
     tabLogin: document.getElementById('tab-login'),
     tabReg: document.getElementById('tab-register'),
@@ -277,6 +279,13 @@ function init() {
     buttons.micToggle.addEventListener('click', toggleMic);
     buttons.download.addEventListener('click', downloadTranscript);
     buttons.clearExit.addEventListener('click', clearAndExit);
+
+    if (inputs.manualText && buttons.manualSend) {
+        buttons.manualSend.addEventListener('click', handleManualTextSubmit);
+        inputs.manualText.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleManualTextSubmit();
+        });
+    }
 
     if (buttons.validateKey) {
         buttons.validateKey.addEventListener('click', handleKeyValidation);
@@ -817,6 +826,14 @@ function initDeepgram() {
             try {
                 const received = JSON.parse(message.data);
                 if (received.type === 'Metadata') return;
+                if (received.type === 'Error' || received.error) {
+                    console.error("Deepgram Error Message:", received);
+                    if (debugStatus) {
+                        debugStatus.textContent = `❌ Deepgram Error: ${received.message || received.error || 'Unknown Error'}`;
+                        debugStatus.style.color = "#ff5252";
+                    }
+                    return;
+                }
 
                 if (!received.channel || !received.channel.alternatives) return;
 
@@ -1331,6 +1348,7 @@ async function streamAIResponse(element, retries = 2) {
                     }
                 }
             }
+            updateAIBubble(element, finalOutput, hasScrolled, true);
             return finalOutput;
         } catch (err) {
             console.error(`AI Error (Attempt ${attempt}):`, err);
@@ -1344,7 +1362,12 @@ async function streamAIResponse(element, retries = 2) {
     }
 }
 
-function updateAIBubble(element, finalOutput, hasScrolled) {
+function updateAIBubble(element, finalOutput, hasScrolled, isDone = false) {
+    if (finalOutput.trim().startsWith("[IGNORE]")) {
+        element.innerHTML = "<em>(Reading detected - ignored)</em>";
+        return;
+    }
+
     // Robust Regex: Handle leading whitespace/newlines that some models prefix
     const qMatch = finalOutput.match(/\[QUESTION:\s*(.*?)\]/s);
     let htmlContent = "";
@@ -1368,7 +1391,7 @@ function updateAIBubble(element, finalOutput, hasScrolled) {
     } else {
         // Tag not complete or not present yet.
         // Show "Thinking..." while the tag is still being formed to prevent raw tag flicker
-        if (finalOutput.trim().startsWith("[") && finalOutput.length < 60) {
+        if (!isDone && finalOutput.trim().startsWith("[") && finalOutput.length < 60) {
             element.innerHTML = "<em>Thinking...</em>";
             return;
         }
@@ -2386,4 +2409,26 @@ function isNewerVersion(latest, current) {
         if (lv < cv) return false;
     }
     return false;
+}
+
+// --- Manual Text Input ---
+function handleManualTextSubmit() {
+    const inputField = inputs.manualText;
+    if (!inputField) return;
+    
+    const text = inputField.value.trim();
+    if (!text) return;
+    
+    // Clear input
+    inputField.value = '';
+    
+    // Display what the user asked in the AI feed
+    const userPrompt = document.createElement('div');
+    userPrompt.className = 'user-message';
+    userPrompt.innerHTML = `<strong>You asked:</strong> ${text}`;
+    displays.aiFeed.appendChild(userPrompt);
+    scrollToBottom(displays.aiFeed);
+    
+    // Trigger AI response directly
+    triggerAI(text, "SPEECH");
 }

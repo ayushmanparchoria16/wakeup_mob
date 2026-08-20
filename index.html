@@ -213,6 +213,13 @@
                     <div id="ai-feed" class="scroll-content">
                         <div class="ai-welcome">AI is listening...</div>
                     </div>
+                    <!-- Manual Text Input for Candidates -->
+                    <div class="manual-input-container">
+                        <input type="text" id="manual-text-input" placeholder="Type to ask AI directly..." autocomplete="off" />
+                        <button id="manual-send-btn" class="header-action-btn" title="Send Answer">
+                            <span class="material-icons-round">send</span>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Transcript Feed (Now Right) -->
@@ -231,6 +238,7 @@
                     <div id="staged-screenshots-container"
                         style="display: flex; gap: 8px; padding: 2px 8px; min-height: 0; overflow-x: auto; margin-top: auto;">
                     </div>
+
 
                     <!-- Mic Status / Visualization -->
                     <div class="audio-visualizer">
