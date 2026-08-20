@@ -237,6 +237,25 @@ function init() {
         console.error("Paddle initialization failed:", err);
     }
 
+    // --- FALLBACK DESKTOP TOKEN SYNC ---
+    const urlParams = new URLSearchParams(window.location.search);
+    const desktopToken = urlParams.get('desktopTokenSync');
+    if (desktopToken) {
+        localStorage.setItem('puter.auth.token', desktopToken);
+        localStorage.setItem('puter_token', desktopToken);
+        localStorage.setItem('puter-auth-token', desktopToken);
+        
+        // Clean URL
+        urlParams.delete('desktopTokenSync');
+        const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+        window.history.replaceState({}, document.title, newUrl);
+        
+        // Force puter setup immediately
+        if (window.puter && window.puter.auth && typeof window.puter.auth.setToken === 'function') {
+            try { window.puter.auth.setToken(desktopToken); } catch(e) {}
+        }
+    }
+
     // Check local storage for user
     const savedUser = localStorage.getItem('interviewbold_user');
     if (savedUser) {

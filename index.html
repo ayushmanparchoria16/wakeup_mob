@@ -560,17 +560,24 @@
             if (window.electronAPI && window.electronAPI.onPuterAuthToken) {
                 window.electronAPI.onPuterAuthToken(token => {
                     console.log("Deep Link Token Received:", token.substring(0, 10) + "...");
-                    // Set both possible keys just in case
+                    // Set all possible keys just in case Puter v2 changed it
                     localStorage.setItem('puter-auth-token', token);
                     localStorage.setItem('puter.auth.token', token);
+                    localStorage.setItem('puter_token', token);
+
+                    if (window.puter && window.puter.auth && typeof window.puter.auth.setToken === 'function') {
+                        try { window.puter.auth.setToken(token); } catch(e) {}
+                    }
 
                     // Visual feedback
                     const statusLine = document.getElementById('status-msg') || { textContent: "" };
                     statusLine.textContent = "Syncing with Puter...";
 
-                    // Brief delay then reload to apply session
+                    // Brief delay then reload to apply session, passing token in URL as a bulletproof fallback
                     setTimeout(() => {
-                        location.reload();
+                        const url = new URL(location.href);
+                        url.searchParams.set('desktopTokenSync', token);
+                        location.href = url.toString();
                     }, 500);
                 });
             }
