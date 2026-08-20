@@ -246,6 +246,8 @@ function init() {
     const urlParams = new URLSearchParams(window.location.search);
     const desktopToken = urlParams.get('desktopTokenSync');
     if (desktopToken) {
+        localStorage.setItem('puter.auth.token.v2', desktopToken);
+        localStorage.setItem('puter.auth.token.origin.v2', 'https://api.puter.com');
         localStorage.setItem('puter.auth.token', desktopToken);
         localStorage.setItem('puter_token', desktopToken);
         localStorage.setItem('puter-auth-token', desktopToken);
@@ -423,9 +425,14 @@ function init() {
             const token = displays.manualTokenInput.value.trim();
             if (!token) return showToast('Please enter a valid token');
             
+            // Puter v2 SDK strictly requires BOTH the v2 token and origin keys
+            localStorage.setItem('puter.auth.token.v2', token);
+            localStorage.setItem('puter.auth.token.origin.v2', 'https://api.puter.com');
+            // Legacy fallbacks
             localStorage.setItem('puter.auth.token', token);
             localStorage.setItem('puter_token', token);
             localStorage.setItem('puter-auth-token', token);
+            
             if (window.puter && window.puter.auth && typeof window.puter.auth.setToken === 'function') {
                 try { window.puter.auth.setToken(token); } catch(e) {}
             }

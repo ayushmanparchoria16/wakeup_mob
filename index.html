@@ -568,6 +568,9 @@
                 window.electronAPI.onPuterAuthToken(token => {
                     console.log("Deep Link Token Received:", token.substring(0, 10) + "...");
                     // Set all possible keys just in case Puter v2 changed it
+                    localStorage.setItem('puter.auth.token.v2', token);
+                    localStorage.setItem('puter.auth.token.origin.v2', 'https://api.puter.com');
+                    
                     localStorage.setItem('puter-auth-token', token);
                     localStorage.setItem('puter.auth.token', token);
                     localStorage.setItem('puter_token', token);
