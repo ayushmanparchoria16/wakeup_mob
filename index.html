@@ -609,6 +609,30 @@
                     }
                 });
             }
+
+            // Override button behavior for native environments
+            function patchPuterButton() {
+                const btn = document.getElementById('connect-puter-btn');
+                if (btn && isNativeApp && !btn.dataset.patched) {
+                    const newBtn = btn.cloneNode(true);
+                    btn.parentNode.replaceChild(newBtn, btn);
+                    newBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                        window.open('https://app.interviewbold.in/sync.html', '_blank');
+                    });
+                    newBtn.dataset.patched = "true";
+                    console.log("Puter button successfully patched for Native Login");
+                }
+            }
+
+            // Patch immediately and on interval to catch any dynamic renders
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', patchPuterButton);
+            } else {
+                patchPuterButton();
+            }
+            setInterval(patchPuterButton, 1000);
         })();
     </script>
 </body>
